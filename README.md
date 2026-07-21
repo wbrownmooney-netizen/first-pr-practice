@@ -37,38 +37,39 @@ is a naive statistics exercise, not investment advice** — a small sample
 of past accuracy says nothing about future results, and the page does
 not place any real trades.
 
-**Trend and accuracy only work for crypto.** Finnhub's free tier returns
-a 403 for historical stock candle data — that data is a paid-plan
-feature there, not something fixable from this page's code. Stock rows
-show "unavailable (free plan)" for those two columns instead, and the
-Trending up/down filters (which rely on the same signal) won't surface
-any stocks as a result; price and 24h change still work fine. Crypto's
-Trending up/down filters work normally, since CoinGecko's sparkline data
+**Stock trend/accuracy need a second, optional key.** Finnhub's free
+tier returns a 403 for historical stock candle data (a paid-plan feature
+there), so that data instead comes from
+[Twelve Data](https://twelvedata.com/), whose free tier does include
+daily history. Paste a free Twelve Data key into the second stock field
+to enable it; without one, stock rows just show "add Twelve Data key" in
+those columns while price and 24h change keep working via Finnhub.
+Crypto's trend/accuracy work regardless, since CoinGecko's sparkline data
 has no such restriction.
 
 Crypto shows the top 20 coins by market cap automatically. Stocks come
-from a comma-separated watchlist — pre-filled with a default set of 10
-well-known large-cap symbols so there's something to see immediately once
-you add a Finnhub key, and freely editable to whatever you actually want
-to track. (Finnhub's free tier has no market-wide "top movers" feed, so
+from a comma-separated watchlist — pre-filled with a default set of 5
+well-known large-cap symbols so there's something to see immediately, and
+freely editable to whatever you actually want to track. (Neither Finnhub
+nor Twelve Data's free tiers offer a market-wide "top movers" feed, so
 this default list stands in for a real screener — combine it with the
 Trending up/down filters to see which of those symbols are currently
 trending.)
 
-Stock requests are deliberately throttled to avoid Finnhub's free-tier
-rate limit: symbols are fetched **one at a time** (not all at once), each
-symbol's quote and candle requests go out **sequentially** rather than in
-parallel, and a request that comes back `429` (rate limited) is retried
-once after a short backoff before being reported as failed. A second scan
-can't start while one is already in flight. Rows appear as each symbol
-comes back, so a full watchlist doesn't feel like a stall; if a symbol
-still fails after the retry, the rest keep loading and the failure is
-reported separately.
+Stock requests are deliberately throttled: symbols are fetched **one at a
+time** (not all at once), each symbol's quote and history requests go out
+**sequentially** rather than in parallel, and a request that comes back
+`429` (rate limited) is retried once after a short backoff before being
+reported as failed. A second scan can't start while one is already in
+flight. The gap between symbols widens automatically (500ms → 8s) when a
+Twelve Data key is set, since its free tier's per-minute limit is much
+tighter than Finnhub's. Rows appear as each symbol comes back, so a full
+watchlist doesn't feel like a stall; if a symbol still fails after the
+retry, the rest keep loading and the failure is reported separately.
 
-The candle request that feeds the stock trend/accuracy columns asks for a
-90-day `from`/`to` range (roughly 60 trading days) rather than a fixed
-count, since Finnhub's API takes a Unix-timestamp range, not a count
-parameter.
+The history request asks Twelve Data for 90 days of daily closes
+(`interval=1day&outputsize=90`), giving comfortably more data than the
+backtest's 5-day window needs.
 
 Open it directly, or click through from `index.html`.
 

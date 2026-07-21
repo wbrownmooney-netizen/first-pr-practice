@@ -207,19 +207,27 @@
         Finnhub's free tier doesn't offer a market-wide "top movers" feed
         &mdash; that needs a paid plan. Instead, the watchlist below is
         pre-filled with a default set of well-known large-cap stocks; add
-        your key and scan it. Edit the list to whatever symbols you
+        your key(s) and scan it. Edit the list to whatever symbols you
         actually care about.
       </p>
       <p class="hint" style="margin-top:0;">
-        <strong>Trend and accuracy aren't available for stocks on
-        Finnhub's free plan</strong> &mdash; historical candle data is a
-        paid feature there, so those columns will show "unavailable (free
-        plan)" and the Trending up/down filters below won't surface
-        anything for stocks. Price and 24h change still work fine; this
-        is a plan limitation on Finnhub's side, not a bug in this page.
+        <strong>Trend and accuracy need a second, optional key.</strong>
+        Finnhub's free plan doesn't include historical candle data at all
+        (that's paid there), so trend/accuracy instead come from
+        <a href="https://twelvedata.com/pricing" target="_blank" rel="noopener">Twelve Data</a>,
+        whose free tier does include daily history. Sign up for a free key
+        at <a href="https://twelvedata.com/register" target="_blank" rel="noopener">twelvedata.com/register</a>
+        and paste it below too. Without it, price and 24h change still
+        work fine via Finnhub &mdash; you'll just see "add Twelve Data
+        key" in the trend/accuracy columns instead. Twelve Data's free
+        tier has a tight per-minute limit, so scans are deliberately slow
+        when this key is present.
       </p>
       <div class="row-inline">
         <input id="finnhub-key" type="password" placeholder="Your free Finnhub API key" autocomplete="off">
+        <input id="twelvedata-key" type="password" placeholder="Your free Twelve Data API key (optional, for trend)" autocomplete="off">
+      </div>
+      <div class="row-inline">
         <input id="stock-symbol" type="text" placeholder="Symbols, e.g. AAPL, TSLA, MSFT" autocomplete="off">
         <button id="stock-fetch">Scan watchlist</button>
       </div>
@@ -248,16 +256,16 @@
 
   <script src="signals.js"></script>
   <script>
-    function trendBadge(trend, restricted) {
-      if (restricted) return '<span class="flat">unavailable (free plan)</span>';
+    function trendBadge(trend, noHistorySource) {
+      if (noHistorySource) return '<span class="flat">add Twelve Data key</span>';
       if (trend === 'up') return '<span class="up">&#9650; up</span>';
       if (trend === 'down') return '<span class="down">&#9660; down</span>';
       if (trend === 'flat') return '<span class="flat">&#8212; flat</span>';
       return '<span class="flat">n/a</span>';
     }
 
-    function accuracyLabel(result, restricted) {
-      if (restricted) return '<span class="flat">unavailable (free plan)</span>';
+    function accuracyLabel(result, noHistorySource) {
+      if (noHistorySource) return '<span class="flat">add Twelve Data key</span>';
       if (!result || result.trials < 5) return '<span class="flat">not enough data yet</span>';
       const pct = (result.accuracy * 100).toFixed(0);
       const cls = result.accuracy >= 0.5 ? 'up' : 'down';
@@ -414,7 +422,7 @@
         return;
       }
       tbody.innerHTML = rows.map(s =>
-        rowHtml(s.symbol, s.price, s.change, s.trend, s.backtest, s.candlesRestricted)
+        rowHtml(s.symbol, s.price, s.change, s.trend, s.backtest, s.noHistorySource)
       ).join('');
     }
 
@@ -437,56 +445,66 @@
       return res;
     }
 
-    // The quote and candle requests are made one after another, not in
-    // parallel, so a single symbol never puts more than one request in
-    // flight at once.
-    async function fetchOneStock(symbol, key) {
-      const quoteRes = await fetchWithRetry(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${key}`);
+    // Live price/change comes from Finnhub (works fine on its free
+    // tier). Historical daily closes — needed for trend/accuracy — come
+    // from Twelve Data instead, since Finnhub's free tier returns 403
+    // for candle data (a paid-plan feature there); Twelve Data's free
+    // tier does include daily history. The Twelve Data key is optional:
+    // without one, price still works, trend/accuracy just don't.
+    // Requests are sequential, not parallel, so a single symbol never
+    // puts more than one request in flight at once.
+    async function fetchOneStock(symbol, finnhubKey, twelveDataKey) {
+      const quoteRes = await fetchWithRetry(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${finnhubKey}`);
       if (!quoteRes.ok) throw new Error('Quote request failed: ' + quoteRes.status);
       const quote = await quoteRes.json();
       if (quote.c === 0 && quote.pc === 0) throw new Error('No data for that symbol');
 
       let trend = null;
       let backtest = null;
-      // Finnhub's candle endpoint takes a from/to Unix-timestamp range,
-      // not a count — 90 calendar days back gives roughly 60 trading
-      // days of daily closes, comfortably more than the backtest needs.
-      const to = Math.floor(Date.now() / 1000);
-      const from = to - 90 * 24 * 60 * 60;
-      const candleRes = await fetchWithRetry(`https://finnhub.io/api/v1/stock/candle?symbol=${symbol}&resolution=D&from=${from}&to=${to}&token=${key}`);
-      // Finnhub's free tier returns 403 for this endpoint — historical
-      // candles for stocks require a paid plan. That's a plan
-      // restriction, not a transient failure, so it's tracked
-      // separately from "not enough data" and shown as such.
-      const candlesRestricted = candleRes.status === 403;
-      if (candleRes.ok) {
-        const candles = await candleRes.json();
-        if (candles.s === 'ok' && Array.isArray(candles.c)) {
-          trend = predictTrend(candles.c.slice(-5));
-          backtest = backtestSignal(candles.c, 5);
+      if (twelveDataKey) {
+        const seriesRes = await fetchWithRetry(
+          `https://api.twelvedata.com/time_series?symbol=${symbol}&interval=1day&outputsize=90&apikey=${twelveDataKey}`
+        );
+        if (seriesRes.ok) {
+          const series = await seriesRes.json();
+          if (series.status !== 'error' && Array.isArray(series.values)) {
+            // Twelve Data returns values newest-first; our signal math
+            // expects chronological (oldest-first) order.
+            const closes = series.values.map(v => parseFloat(v.close)).reverse();
+            trend = predictTrend(closes.slice(-5));
+            backtest = backtestSignal(closes, 5);
+          }
         }
       }
-      return { symbol, price: quote.c, change: quote.d, trend, backtest, candlesRestricted };
+      // quote.dp is Finnhub's percent change; quote.d is the absolute
+      // dollar change — using dp here (previously this used d, which
+      // displayed a dollar amount labeled with a % sign).
+      return { symbol, price: quote.c, change: quote.dp, trend, backtest, noHistorySource: !twelveDataKey };
     }
 
     // Finnhub's free tier rate-limits by requests per second, not just
     // per minute — firing every symbol's requests at once (as
     // Promise.all/allSettled would) triggers 429s well before the
     // watchlist finishes. Fetching one symbol at a time, sequentially
-    // requesting quote then candle within it, with a gap between
+    // requesting quote then history within it, with a gap between
     // symbols, keeps requests spread out; the 429 retry above absorbs
-    // whatever momentary limiting still slips through.
+    // whatever momentary limiting still slips through. Twelve Data's
+    // free tier has a much tighter per-minute limit than Finnhub, so
+    // the gap widens automatically whenever a Twelve Data key is set.
     const STOCK_FETCH_DELAY_MS = 500;
+    const STOCK_FETCH_DELAY_WITH_HISTORY_MS = 8000;
     let stocksFetchInProgress = false;
 
     async function fetchStocks() {
       if (stocksFetchInProgress) return;
 
       const keyInput = document.getElementById('finnhub-key');
+      const twelveDataKeyInput = document.getElementById('twelvedata-key');
       const symbolInput = document.getElementById('stock-symbol');
       const statusEl = document.getElementById('stock-status');
 
       const key = keyInput.value.trim();
+      const twelveDataKey = twelveDataKeyInput.value.trim();
       const symbols = symbolInput.value.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
       if (!key || symbols.length === 0) {
         statusEl.textContent = 'Enter both an API key and at least one symbol.';
@@ -494,7 +512,10 @@
         return;
       }
       localStorage.setItem('finnhubKey', key);
+      if (twelveDataKey) localStorage.setItem('twelveDataKey', twelveDataKey);
       localStorage.setItem('stockWatchlist', symbols.join(','));
+
+      const delay = twelveDataKey ? STOCK_FETCH_DELAY_WITH_HISTORY_MS : STOCK_FETCH_DELAY_MS;
 
       stocksFetchInProgress = true;
       try {
@@ -506,12 +527,12 @@
           statusEl.textContent = `Loading… (${i + 1}/${symbols.length})`;
           statusEl.className = 'status';
           try {
-            stockData.push(await fetchOneStock(symbols[i], key));
+            stockData.push(await fetchOneStock(symbols[i], key, twelveDataKey));
             renderStocks(activeFilter());
           } catch (err) {
             failed.push({ symbol: symbols[i], error: err });
           }
-          if (i < symbols.length - 1) await sleep(STOCK_FETCH_DELAY_MS);
+          if (i < symbols.length - 1) await sleep(delay);
         }
 
         renderStocks(activeFilter());
@@ -539,13 +560,15 @@
     // No free "top movers" feed exists for stocks, so we default the
     // watchlist to a handful of well-known large-caps across sectors
     // instead — a reasonable starting point, not a live market screener.
-    const DEFAULT_STOCK_WATCHLIST = [
-      'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA',
-      'META', 'TSLA', 'JPM', 'V', 'DIS'
-    ];
+    // Kept short (5, not 10+) because Twelve Data's free tier's tight
+    // per-minute limit makes each additional symbol noticeably slower
+    // to scan once a Twelve Data key is set.
+    const DEFAULT_STOCK_WATCHLIST = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA'];
 
     const savedKey = localStorage.getItem('finnhubKey');
     if (savedKey) document.getElementById('finnhub-key').value = savedKey;
+    const savedTwelveDataKey = localStorage.getItem('twelveDataKey');
+    if (savedTwelveDataKey) document.getElementById('twelvedata-key').value = savedTwelveDataKey;
     const savedWatchlist = localStorage.getItem('stockWatchlist');
     document.getElementById('stock-symbol').value = savedWatchlist || DEFAULT_STOCK_WATCHLIST.join(', ');
 
