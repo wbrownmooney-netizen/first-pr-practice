@@ -558,31 +558,47 @@
       ).join('');
     }
 
+    // Retries once on a network-level failure (fetch() throwing before
+    // any response comes back at all — a dropped connection, timeout,
+    // etc.), as distinct from fetchWithRetry's handling of a real HTTP
+    // 429 response. A single retry is enough to ride out a momentary
+    // blip without failing the whole page load over it.
+    async function fetchWithNetworkRetry(url) {
+      try {
+        return await fetch(url);
+      } catch (err) {
+        await sleep(1000);
+        return await fetch(url);
+      }
+    }
+
     async function loadCrypto() {
       const tbody = document.getElementById('crypto-rows');
       try {
-        const res = await fetch(
-          'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&sparkline=true'
+        // 100 keeps the response (and its 7-day hourly sparklines) light
+        // enough to load reliably; CoinGecko's actual max is 250, but
+        // that heavier payload was seen to intermittently fail outright
+        // ("Failed to fetch") rather than error cleanly.
+        const res = await fetchWithNetworkRetry(
+          'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1&sparkline=true'
         );
         if (!res.ok) throw new Error('CoinGecko request failed: ' + res.status);
         let coins = await res.json();
 
-        // 250 is CoinGecko's max per request — comfortably covers
-        // anything anyone's likely to ask about, but it's still "top
-        // 250 by market cap," not literally every coin that exists.
-        // Paper-trading holdings outside even that would otherwise
-        // never get fetched at all, so never show a trend or fire an
-        // alert. Fetch those specifically, best-effort — if this extra
-        // call fails, the top-250 list still renders normally.
+        // Paper-trading holdings outside even the top 100 by market cap
+        // would otherwise never get fetched at all, so never show a
+        // trend or fire an alert. Fetch those specifically, best-effort
+        // — if this extra call fails, the top-100 list still renders
+        // normally.
         const held = getHeldPositions();
         const missingIds = [...held.cryptoIds].filter(id => !coins.some(c => c.id === id));
         if (missingIds.length > 0) {
           try {
-            const extraRes = await fetch(
+            const extraRes = await fetchWithNetworkRetry(
               `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${missingIds.join(',')}&sparkline=true`
             );
             if (extraRes.ok) coins = coins.concat(await extraRes.json());
-          } catch (e) { /* best-effort — top-250 list still renders without it */ }
+          } catch (e) { /* best-effort — top-100 list still renders without it */ }
         }
 
         cryptoData = coins.map(coin => {
