@@ -21,6 +21,8 @@
     --warn-text: #7a5b00;
     --alert-bg: rgba(37, 99, 235, 0.12);
     --alert-bg-strong: rgba(37, 99, 235, 0.28);
+    --danger: #dc2626;
+    --danger-hover: #b91c1c;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -38,6 +40,8 @@
       --warn-text: #f5c451;
       --alert-bg: rgba(59, 130, 246, 0.18);
       --alert-bg-strong: rgba(59, 130, 246, 0.36);
+      --danger: #f87171;
+      --danger-hover: #fca5a5;
     }
   }
   * { box-sizing: border-box; }
@@ -88,9 +92,7 @@
   .down { color: var(--down); font-weight: 600; }
   .flat { color: var(--muted); }
   .row-inline { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-bottom: 0.9rem; }
-  input[type="text"], input[type="password"] {
-    flex: 1;
-    min-width: 120px;
+  select, input[type="text"], input[type="password"], input[type="number"] {
     padding: 0.55rem 0.7rem;
     border-radius: 8px;
     border: 1px solid var(--border);
@@ -98,6 +100,8 @@
     color: var(--text);
     font-size: 0.9rem;
   }
+  input[type="text"], input[type="password"] { flex: 1; min-width: 120px; }
+  input[type="number"] { width: 110px; }
   button {
     font-size: 0.9rem;
     font-weight: 600;
@@ -110,6 +114,23 @@
   }
   button:hover { background: var(--accent-hover); }
   button:disabled { opacity: 0.5; cursor: default; }
+  button.sell { background: var(--danger); }
+  button.sell:hover { background: var(--danger-hover); }
+  button.ghost {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    font-weight: 500;
+  }
+  .balance-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .balance-row .value { font-size: 1.8rem; font-weight: 700; }
+  .balance-row .label { color: var(--muted); font-size: 0.85rem; }
   .filter-group { display: flex; gap: 0.4rem; margin-bottom: 0.9rem; }
   .filter-btn {
     background: transparent;
@@ -133,7 +154,7 @@
       <nav class="top">
         <a href="index.html">&larr; back to counter app</a>
         &nbsp;&middot;&nbsp;
-        <a href="paper.html">Paper trading simulator &rarr;</a>
+        <a href="#paper-trading-section">Paper trading simulator &darr;</a>
       </nav>
     </header>
 
@@ -263,9 +284,90 @@
       </table>
       <p id="stock-status" class="status"></p>
     </section>
+
+    <section id="paper-trading-section">
+      <h2>Paper Trading Simulator</h2>
+      <p class="hint" style="margin-top:0;">
+        Practice buying and selling with fake money, at real live prices.
+        <a href="#crypto-section">&uarr; back to the dashboard</a>
+      </p>
+      <div class="disclaimer">
+        <strong>No real money, ever.</strong> This section does not
+        connect to any broker or move real funds &mdash; it's a local
+        simulation stored only in your browser. Nothing here is
+        investment advice.
+      </div>
+
+      <div class="balance-row" style="margin-bottom: 1.25rem;">
+        <div>
+          <div class="label">Cash balance</div>
+          <div class="value" id="cash-value">$0.00</div>
+        </div>
+        <div>
+          <div class="label">Portfolio value (cash + holdings)</div>
+          <div class="value" id="total-value">$0.00</div>
+        </div>
+        <button class="ghost" id="reset-btn">Reset to $10,000</button>
+      </div>
+
+      <h3 style="font-size: 0.95rem; margin: 1.25rem 0 0.75rem;">Place a paper trade</h3>
+      <div class="row-inline">
+        <select id="asset-type">
+          <option value="crypto">Crypto</option>
+          <option value="stock">Stock</option>
+        </select>
+        <input id="symbol-input" type="text" placeholder="e.g. bitcoin, or AAPL" autocomplete="off">
+        <input id="quantity-input" type="number" placeholder="Qty" min="0" step="any">
+        <button id="buy-btn">Buy</button>
+        <button id="sell-btn" class="sell">Sell</button>
+      </div>
+      <p class="hint">
+        Crypto symbols are <a href="https://www.coingecko.com/en/all-cryptocurrencies" target="_blank" rel="noopener">CoinGecko IDs</a>
+        (e.g. <code>bitcoin</code>, <code>ethereum</code>, <code>solana</code>), not tickers.
+        Stocks use the same Finnhub key entered in the Stocks section above.
+      </p>
+      <p id="trade-status" class="status"></p>
+
+      <h3 style="font-size: 0.95rem; margin: 1.25rem 0 0.75rem;">Holdings</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th class="num">Quantity</th>
+            <th class="num">Avg cost</th>
+            <th class="num">Current price</th>
+            <th class="num">Market value</th>
+            <th class="num">Unrealized P/L</th>
+          </tr>
+        </thead>
+        <tbody id="holdings-rows">
+          <tr><td colspan="6" class="status">No holdings yet &mdash; place a trade above.</td></tr>
+        </tbody>
+      </table>
+      <p class="row-inline" style="margin-top:0.9rem;">
+        <button class="ghost" id="refresh-btn">Refresh prices</button>
+      </p>
+
+      <h3 style="font-size: 0.95rem; margin: 1.25rem 0 0.75rem;">Trade history</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Action</th>
+            <th>Symbol</th>
+            <th class="num">Quantity</th>
+            <th class="num">Price</th>
+          </tr>
+        </thead>
+        <tbody id="history-rows">
+          <tr><td colspan="5" class="status">No trades yet.</td></tr>
+        </tbody>
+      </table>
+    </section>
   </div>
 
   <script src="signals.js"></script>
+  <script src="portfolio.js"></script>
   <script>
     function trendBadge(trend, noHistorySource) {
       if (noHistorySource) return '<span class="flat">add Twelve Data key</span>';
@@ -580,6 +682,188 @@
     setupFilter('crypto-filter', renderCrypto);
     setupFilter('stock-filter', renderStocks);
 
+    // --- Paper trading simulator --------------------------------------
+    // A local, fake-money portfolio, stored under its own
+    // `paperPortfolio` localStorage key, sharing the page's single
+    // Finnhub key field for stock lookups.
+    const STARTING_CASH = 10000;
+    const PAPER_STATE_KEY = 'paperPortfolio';
+
+    function loadPaperState() {
+      try {
+        const raw = localStorage.getItem(PAPER_STATE_KEY);
+        if (raw) return JSON.parse(raw);
+      } catch (e) { /* fall through to fresh state */ }
+      return { cash: STARTING_CASH, positions: {}, history: [] };
+    }
+
+    function savePaperState() {
+      localStorage.setItem(PAPER_STATE_KEY, JSON.stringify(paperState));
+    }
+
+    let paperState = loadPaperState();
+    let paperLivePrices = {}; // key: "crypto:bitcoin" or "stock:AAPL" -> price
+
+    function paperPositionKey(type, symbol) {
+      return `${type}:${symbol}`;
+    }
+
+    async function fetchPaperCryptoPrice(id) {
+      const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(id)}&vs_currencies=usd`);
+      if (!res.ok) throw new Error('CoinGecko request failed: ' + res.status);
+      const data = await res.json();
+      if (!data[id]) throw new Error(`Unknown CoinGecko id "${id}"`);
+      return data[id].usd;
+    }
+
+    async function fetchPaperStockPrice(symbol, key) {
+      if (!key) throw new Error('Enter a Finnhub API key in the Stocks section first');
+      const res = await fetchWithRetry(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${key}`);
+      if (!res.ok) throw new Error('Finnhub request failed: ' + res.status);
+      const quote = await res.json();
+      if (quote.c === 0 && quote.pc === 0) throw new Error(`No data for symbol "${symbol}"`);
+      return quote.c;
+    }
+
+    async function fetchPaperPrice(type, symbol, key) {
+      const cacheKey = paperPositionKey(type, symbol);
+      const price = type === 'crypto' ? await fetchPaperCryptoPrice(symbol) : await fetchPaperStockPrice(symbol, key);
+      paperLivePrices[cacheKey] = price;
+      return price;
+    }
+
+    function renderPaperBalances() {
+      document.getElementById('cash-value').textContent = fmtUsd(paperState.cash);
+      let holdingsValue = 0;
+      for (const key in paperState.positions) {
+        const pos = paperState.positions[key];
+        const price = paperLivePrices[key];
+        if (price != null) holdingsValue += price * pos.quantity;
+      }
+      document.getElementById('total-value').textContent = fmtUsd(paperState.cash + holdingsValue);
+    }
+
+    function renderPaperHoldings() {
+      const tbody = document.getElementById('holdings-rows');
+      const keys = Object.keys(paperState.positions).filter(k => paperState.positions[k].quantity > 0);
+      if (keys.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="status">No holdings yet — place a trade above.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = keys.map(key => {
+        const pos = paperState.positions[key];
+        const price = paperLivePrices[key];
+        const label = key.replace(':', ' — ');
+        const marketValue = price != null ? price * pos.quantity : null;
+        const cost = pos.avgCost * pos.quantity;
+        const pl = marketValue != null ? marketValue - cost : null;
+        const plClass = pl == null ? 'flat' : pl >= 0 ? 'up' : 'down';
+        return `
+          <tr>
+            <td>${label}</td>
+            <td class="num">${pos.quantity}</td>
+            <td class="num">${fmtUsd(pos.avgCost)}</td>
+            <td class="num">${price != null ? fmtUsd(price) : 'n/a'}</td>
+            <td class="num">${marketValue != null ? fmtUsd(marketValue) : 'n/a'}</td>
+            <td class="num ${plClass}">${pl != null ? fmtUsd(pl) : 'n/a'}</td>
+          </tr>`;
+      }).join('');
+    }
+
+    function renderPaperHistory() {
+      const tbody = document.getElementById('history-rows');
+      if (paperState.history.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="status">No trades yet.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = paperState.history.slice().reverse().map(t => `
+        <tr>
+          <td>${new Date(t.time).toLocaleString()}</td>
+          <td class="${t.action === 'buy' ? 'up' : 'down'}">${t.action.toUpperCase()}</td>
+          <td>${t.type}:${t.symbol}</td>
+          <td class="num">${t.quantity}</td>
+          <td class="num">${fmtUsd(t.price)}</td>
+        </tr>`).join('');
+    }
+
+    function renderPaperAll() {
+      renderPaperBalances();
+      renderPaperHoldings();
+      renderPaperHistory();
+    }
+
+    async function refreshPaperPrices() {
+      const key = document.getElementById('finnhub-key').value.trim();
+      const keys = Object.keys(paperState.positions).filter(k => paperState.positions[k].quantity > 0);
+      await Promise.allSettled(keys.map(k => {
+        const [type, symbol] = k.split(':');
+        return fetchPaperPrice(type, symbol, key);
+      }));
+      renderPaperAll();
+    }
+
+    async function placePaperTrade(action) {
+      const statusEl = document.getElementById('trade-status');
+      const type = document.getElementById('asset-type').value;
+      const symbol = document.getElementById('symbol-input').value.trim();
+      const quantity = parseFloat(document.getElementById('quantity-input').value);
+      const key = document.getElementById('finnhub-key').value.trim();
+
+      if (!symbol || !quantity || quantity <= 0) {
+        statusEl.textContent = 'Enter a symbol and a positive quantity.';
+        statusEl.className = 'status error';
+        return;
+      }
+
+      statusEl.textContent = 'Fetching live price…';
+      statusEl.className = 'status';
+
+      try {
+        const normSymbol = type === 'stock' ? symbol.toUpperCase() : symbol.toLowerCase();
+        const price = await fetchPaperPrice(type, normSymbol, key);
+        const posKey = paperPositionKey(type, normSymbol);
+        const cost = price * quantity;
+
+        if (action === 'buy') {
+          if (cost > paperState.cash) {
+            statusEl.textContent = `Not enough cash: need ${fmtUsd(cost)}, have ${fmtUsd(paperState.cash)}.`;
+            statusEl.className = 'status error';
+            return;
+          }
+          paperState.positions[posKey] = buyPosition(paperState.positions[posKey], quantity, price);
+          paperState.cash -= cost;
+        } else {
+          if (!paperState.positions[posKey] || paperState.positions[posKey].quantity < quantity) {
+            statusEl.textContent = `You don't hold enough ${normSymbol} to sell ${quantity}.`;
+            statusEl.className = 'status error';
+            return;
+          }
+          paperState.positions[posKey] = sellPosition(paperState.positions[posKey], quantity);
+          paperState.cash += cost;
+        }
+
+        paperState.history.push({ time: Date.now(), action, type, symbol: normSymbol, quantity, price });
+        savePaperState();
+        renderPaperAll();
+        statusEl.textContent = `${action === 'buy' ? 'Bought' : 'Sold'} ${quantity} ${normSymbol} at ${fmtUsd(price)}.`;
+        statusEl.className = 'status';
+      } catch (err) {
+        statusEl.textContent = "Couldn't place trade: " + err.message;
+        statusEl.className = 'status error';
+      }
+    }
+
+    document.getElementById('buy-btn').addEventListener('click', () => placePaperTrade('buy'));
+    document.getElementById('sell-btn').addEventListener('click', () => placePaperTrade('sell'));
+    document.getElementById('refresh-btn').addEventListener('click', refreshPaperPrices);
+    document.getElementById('reset-btn').addEventListener('click', () => {
+      if (!confirm('Reset your paper portfolio back to $10,000 cash? This clears all holdings and history.')) return;
+      paperState = { cash: STARTING_CASH, positions: {}, history: [] };
+      paperLivePrices = {};
+      savePaperState();
+      renderPaperAll();
+    });
+
     // No free "top movers" feed exists for stocks, so we default the
     // watchlist to a handful of well-known large-caps across sectors
     // instead — a reasonable starting point, not a live market screener.
@@ -597,6 +881,9 @@
 
     loadCrypto();
     if (savedKey) fetchStocks();
+
+    renderPaperAll();
+    refreshPaperPrices();
   </script>
 </body>
 </html>
