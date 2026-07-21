@@ -203,6 +203,14 @@
         <li>Once logged in, copy the API key shown on your Finnhub dashboard</li>
         <li>Paste it into the box below &mdash; it stays saved only in this browser, and is never sent anywhere but Finnhub</li>
       </ol>
+      <p class="hint" style="margin-top:0;">
+        Finnhub's free tier doesn't offer a market-wide "top movers" feed
+        &mdash; that needs a paid plan. Instead, the watchlist below is
+        pre-filled with a default set of well-known large-cap stocks; add
+        your key and scan it, then use the Trending up/down filters below
+        to see which of those are currently trending. Edit the list to
+        whatever symbols you actually care about.
+      </p>
       <div class="row-inline">
         <input id="finnhub-key" type="password" placeholder="Your free Finnhub API key" autocomplete="off">
         <input id="stock-symbol" type="text" placeholder="Symbols, e.g. AAPL, TSLA, MSFT" autocomplete="off">
@@ -465,12 +473,23 @@
     setupFilter('crypto-filter', renderCrypto);
     setupFilter('stock-filter', renderStocks);
 
+    // No free "top movers" feed exists for stocks, so we default the
+    // watchlist to a handful of well-known large-caps across sectors
+    // instead — a reasonable starting point, not a live market screener.
+    const DEFAULT_STOCK_WATCHLIST = [
+      'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA',
+      'META', 'TSLA', 'JPM', 'V', 'UNH',
+      'XOM', 'JNJ', 'WMT', 'PG', 'MA',
+      'HD', 'CVX', 'KO', 'PEP', 'DIS'
+    ];
+
     const savedKey = localStorage.getItem('finnhubKey');
     if (savedKey) document.getElementById('finnhub-key').value = savedKey;
     const savedWatchlist = localStorage.getItem('stockWatchlist');
-    if (savedWatchlist) document.getElementById('stock-symbol').value = savedWatchlist;
+    document.getElementById('stock-symbol').value = savedWatchlist || DEFAULT_STOCK_WATCHLIST.join(', ');
 
     loadCrypto();
+    if (savedKey) fetchStocks();
   </script>
 </body>
 </html>

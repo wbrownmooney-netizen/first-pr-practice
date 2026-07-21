@@ -42,10 +42,16 @@ can see at a glance which coins or watchlist stocks the signal currently
 favors in either direction — still just a filtered view of the same data,
 not a recommendation.
 
-Crypto shows the top 20 coins by market cap automatically. Stocks are
-scanned from a comma-separated watchlist you type in (e.g. `AAPL, TSLA,
-MSFT`), fetched in parallel; if a symbol fails (bad ticker, rate limit,
-etc.) the rest still load and the failure is reported separately.
+Crypto shows the top 20 coins by market cap automatically. Stocks come
+from a comma-separated watchlist, fetched in parallel — pre-filled with a
+default set of 20 well-known large-cap symbols so there's something to
+see immediately once you add a Finnhub key, and freely editable to
+whatever you actually want to track. (Finnhub's free tier has no
+market-wide "top movers" feed, so this default list stands in for a real
+screener — combine it with the Trending up/down filters to see which of
+those symbols are currently trending.) If a symbol fails (bad ticker,
+rate limit, etc.) the rest still load and the failure is reported
+separately.
 
 Open it directly, or click through from `index.html`.
 
