@@ -37,10 +37,14 @@ is a naive statistics exercise, not investment advice** — a small sample
 of past accuracy says nothing about future results, and the page does
 not place any real trades.
 
-Both tables have **Trending up** / **Trending down** filter buttons, so you
-can see at a glance which coins or watchlist stocks the signal currently
-favors in either direction — still just a filtered view of the same data,
-not a recommendation.
+**Trend and accuracy only work for crypto.** Finnhub's free tier returns
+a 403 for historical stock candle data — that data is a paid-plan
+feature there, not something fixable from this page's code. Stock rows
+show "unavailable (free plan)" for those two columns instead, and the
+Trending up/down filters (which rely on the same signal) won't surface
+any stocks as a result; price and 24h change still work fine. Crypto's
+Trending up/down filters work normally, since CoinGecko's sparkline data
+has no such restriction.
 
 Crypto shows the top 20 coins by market cap automatically. Stocks come
 from a comma-separated watchlist — pre-filled with a default set of 10

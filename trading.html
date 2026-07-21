@@ -207,9 +207,16 @@
         Finnhub's free tier doesn't offer a market-wide "top movers" feed
         &mdash; that needs a paid plan. Instead, the watchlist below is
         pre-filled with a default set of well-known large-cap stocks; add
-        your key and scan it, then use the Trending up/down filters below
-        to see which of those are currently trending. Edit the list to
-        whatever symbols you actually care about.
+        your key and scan it. Edit the list to whatever symbols you
+        actually care about.
+      </p>
+      <p class="hint" style="margin-top:0;">
+        <strong>Trend and accuracy aren't available for stocks on
+        Finnhub's free plan</strong> &mdash; historical candle data is a
+        paid feature there, so those columns will show "unavailable (free
+        plan)" and the Trending up/down filters below won't surface
+        anything for stocks. Price and 24h change still work fine; this
+        is a plan limitation on Finnhub's side, not a bug in this page.
       </p>
       <div class="row-inline">
         <input id="finnhub-key" type="password" placeholder="Your free Finnhub API key" autocomplete="off">
@@ -241,14 +248,16 @@
 
   <script src="signals.js"></script>
   <script>
-    function trendBadge(trend) {
+    function trendBadge(trend, restricted) {
+      if (restricted) return '<span class="flat">unavailable (free plan)</span>';
       if (trend === 'up') return '<span class="up">&#9650; up</span>';
       if (trend === 'down') return '<span class="down">&#9660; down</span>';
       if (trend === 'flat') return '<span class="flat">&#8212; flat</span>';
       return '<span class="flat">n/a</span>';
     }
 
-    function accuracyLabel(result) {
+    function accuracyLabel(result, restricted) {
+      if (restricted) return '<span class="flat">unavailable (free plan)</span>';
       if (!result || result.trials < 5) return '<span class="flat">not enough data yet</span>';
       const pct = (result.accuracy * 100).toFixed(0);
       const cls = result.accuracy >= 0.5 ? 'up' : 'down';
@@ -275,15 +284,15 @@
       });
     }
 
-    function rowHtml(name, price, change, trend, backtest) {
+    function rowHtml(name, price, change, trend, backtest, restricted) {
       const changeClass = change > 0 ? 'up' : change < 0 ? 'down' : 'flat';
       return `
         <tr>
           <td>${name}</td>
           <td class="num">${fmtUsd(price)}</td>
           <td class="num ${changeClass}">${change != null ? change.toFixed(2) + '%' : 'n/a'}</td>
-          <td class="num">${trendBadge(trend)}</td>
-          <td class="num">${accuracyLabel(backtest)}</td>
+          <td class="num">${trendBadge(trend, restricted)}</td>
+          <td class="num">${accuracyLabel(backtest, restricted)}</td>
         </tr>`;
     }
 
@@ -405,7 +414,7 @@
         return;
       }
       tbody.innerHTML = rows.map(s =>
-        rowHtml(s.symbol, s.price, s.change, s.trend, s.backtest)
+        rowHtml(s.symbol, s.price, s.change, s.trend, s.backtest, s.candlesRestricted)
       ).join('');
     }
 
@@ -445,6 +454,11 @@
       const to = Math.floor(Date.now() / 1000);
       const from = to - 90 * 24 * 60 * 60;
       const candleRes = await fetchWithRetry(`https://finnhub.io/api/v1/stock/candle?symbol=${symbol}&resolution=D&from=${from}&to=${to}&token=${key}`);
+      // Finnhub's free tier returns 403 for this endpoint — historical
+      // candles for stocks require a paid plan. That's a plan
+      // restriction, not a transient failure, so it's tracked
+      // separately from "not enough data" and shown as such.
+      const candlesRestricted = candleRes.status === 403;
       if (candleRes.ok) {
         const candles = await candleRes.json();
         if (candles.s === 'ok' && Array.isArray(candles.c)) {
@@ -452,7 +466,7 @@
           backtest = backtestSignal(candles.c, 5);
         }
       }
-      return { symbol, price: quote.c, change: quote.d, trend, backtest };
+      return { symbol, price: quote.c, change: quote.d, trend, backtest, candlesRestricted };
     }
 
     // Finnhub's free tier rate-limits by requests per second, not just
