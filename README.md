@@ -47,11 +47,14 @@ those columns while price and 24h change keep working via Finnhub.
 Crypto's trend/accuracy work regardless, since CoinGecko's sparkline data
 has no such restriction.
 
-Crypto shows the top 250 coins by market cap automatically — CoinGecko's
-maximum per request, and comfortably more than the vast majority of
-coins anyone would ask about, though still "top 250 by market cap," not
-literally every coin that exists. The table scrolls independently with a
-sticky header so a 250-row list doesn't take over the page. Stocks come
+Crypto shows the top 100 coins by market cap automatically — CoinGecko
+supports up to 250 per request, but at that size (with 7-day hourly
+sparklines for every coin) the request was seen to intermittently fail
+outright ("Failed to fetch") rather than error cleanly, so this dials
+back to a lighter, more reliable payload. The main request also retries
+once on that kind of network-level failure before giving up. The table
+scrolls independently with a sticky header so a 100-row list doesn't
+take over the page. Stocks come
 from a comma-separated watchlist — pre-filled with a default set of 5
 well-known large-cap symbols so there's something to see immediately, and
 freely editable to whatever you actually want to track. (Neither Finnhub
@@ -89,7 +92,7 @@ The dashboard is aware of your [paper trading](#paper-trading-simulator)
 holdings (read from the same browser's localStorage — no extra setup):
 anything you currently hold gets a **HELD** badge next to its name, is
 automatically added to the stock watchlist and fetched even if outside
-crypto's top 250 by market cap, and its alert notification says so
+crypto's top 100 by market cap, and its alert notification says so
 explicitly. This is read-only awareness, not a recommendation to act on —
 same disclaimer as everywhere else on this page.
 
