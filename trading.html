@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crypto &amp; Stocks Dashboard</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --text: #1a1a1a;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --border: #e5e7eb;
+    --up: #16a34a;
+    --down: #dc2626;
+    --warn-bg: #fff7e6;
+    --warn-border: #f5c451;
+    --warn-text: #7a5b00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115;
+      --card: #1a1d24;
+      --text: #f2f2f2;
+      --muted: #9ca3af;
+      --accent: #3b82f6;
+      --accent-hover: #60a5fa;
+      --border: #2a2e37;
+      --up: #4ade80;
+      --down: #f87171;
+      --warn-bg: #2a230f;
+      --warn-border: #7a5b00;
+      --warn-text: #f5c451;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 2rem 1rem 4rem;
+  }
+  .wrap { max-width: 780px; margin: 0 auto; }
+  header { text-align: center; margin-bottom: 1.5rem; }
+  header h1 { margin: 0 0 0.25rem; font-size: 1.6rem; }
+  header p { color: var(--muted); margin: 0; }
+  nav.top a { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
+  .disclaimer {
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-border);
+    color: var(--warn-text);
+    border-radius: 10px;
+    padding: 0.85rem 1rem;
+    font-size: 0.85rem;
+    margin: 1.25rem 0;
+    line-height: 1.4;
+  }
+  section {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 1.25rem 1.5rem 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  section h2 {
+    font-size: 1.05rem;
+    margin: 0 0 0.9rem;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 0.5rem 0.4rem; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; }
+  td.num, th.num { text-align: right; }
+  .up { color: var(--up); font-weight: 600; }
+  .down { color: var(--down); font-weight: 600; }
+  .flat { color: var(--muted); }
+  .row-inline { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-bottom: 0.9rem; }
+  input[type="text"], input[type="password"] {
+    flex: 1;
+    min-width: 120px;
+    padding: 0.55rem 0.7rem;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 0.9rem;
+  }
+  button {
+    font-size: 0.9rem;
+    font-weight: 600;
+    padding: 0.55rem 1rem;
+    border: none;
+    border-radius: 8px;
+    background: var(--accent);
+    color: white;
+    cursor: pointer;
+  }
+  button:hover { background: var(--accent-hover); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .hint { color: var(--muted); font-size: 0.78rem; margin: 0.4rem 0 0; }
+  .hint a { color: var(--accent); }
+  .status { font-size: 0.85rem; color: var(--muted); margin-top: 0.5rem; }
+  .status.error { color: var(--down); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Crypto &amp; Stocks Dashboard</h1>
+      <p>Live prices with a simple trend prediction</p>
+      <nav class="top"><a href="index.html">&larr; back to counter app</a></nav>
+    </header>
+
+    <div class="disclaimer">
+      <strong>Not financial advice.</strong> Predictions here are a naive
+      linear-trend extrapolation over recent price data &mdash; a statistics
+      exercise, not a forecast you should trade on. Nothing on this page
+      buys, sells, or places real trades.
+    </div>
+
+    <section id="crypto-section">
+      <h2>Crypto (live, via CoinGecko)</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Coin</th>
+            <th class="num">Price (USD)</th>
+            <th class="num">24h Change</th>
+            <th class="num">Next-step trend</th>
+          </tr>
+        </thead>
+        <tbody id="crypto-rows">
+          <tr><td colspan="4" class="status">Loading&hellip;</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="stocks-section">
+      <h2>Stocks</h2>
+      <div class="row-inline">
+        <input id="finnhub-key" type="password" placeholder="Your free Finnhub API key" autocomplete="off">
+        <input id="stock-symbol" type="text" placeholder="Symbol, e.g. AAPL" autocomplete="off" style="max-width: 140px;">
+        <button id="stock-fetch">Get quote</button>
+      </div>
+      <p class="hint">
+        Stock data needs a free API key from
+        <a href="https://finnhub.io/register" target="_blank" rel="noopener">finnhub.io</a>
+        (you create and paste in your own key &mdash; it's stored only in
+        this browser's local storage, never sent anywhere but Finnhub).
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th class="num">Price (USD)</th>
+            <th class="num">Change</th>
+            <th class="num">Next-step trend</th>
+          </tr>
+        </thead>
+        <tbody id="stock-rows">
+          <tr><td colspan="4" class="status">Enter a key and symbol above.</td></tr>
+        </tbody>
+      </table>
+      <p id="stock-status" class="status"></p>
+    </section>
+  </div>
+
+  <script>
+    // Naive trend prediction: fit a line (least squares) over recent prices
+    // and report the sign of its slope. Not a real forecasting model.
+    function predictTrend(prices) {
+      const n = prices.length;
+      if (n < 2) return null;
+      const xs = prices.map((_, i) => i);
+      const meanX = xs.reduce((a, b) => a + b, 0) / n;
+      const meanY = prices.reduce((a, b) => a + b, 0) / n;
+      let num = 0, den = 0;
+      for (let i = 0; i < n; i++) {
+        num += (xs[i] - meanX) * (prices[i] - meanY);
+        den += (xs[i] - meanX) ** 2;
+      }
+      const slope = den === 0 ? 0 : num / den;
+      const relative = slope / (meanY || 1);
+      if (relative > 0.001) return 'up';
+      if (relative < -0.001) return 'down';
+      return 'flat';
+    }
+
+    function trendBadge(trend) {
+      if (trend === 'up') return '<span class="up">&#9650; up</span>';
+      if (trend === 'down') return '<span class="down">&#9660; down</span>';
+      if (trend === 'flat') return '<span class="flat">&#8212; flat</span>';
+      return '<span class="flat">n/a</span>';
+    }
+
+    function fmtUsd(n) {
+      return n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+    }
+
+    async function loadCrypto() {
+      const tbody = document.getElementById('crypto-rows');
+      try {
+        const res = await fetch(
+          'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=8&page=1&sparkline=true'
+        );
+        if (!res.ok) throw new Error('CoinGecko request failed: ' + res.status);
+        const coins = await res.json();
+        tbody.innerHTML = coins.map(coin => {
+          const change = coin.price_change_percentage_24h;
+          const changeClass = change > 0 ? 'up' : change < 0 ? 'down' : 'flat';
+          const sparkline = (coin.sparkline_in_7d && coin.sparkline_in_7d.price) || [];
+          const trend = predictTrend(sparkline.slice(-24));
+          return `
+            <tr>
+              <td>${coin.name} <span class="hint">(${coin.symbol.toUpperCase()})</span></td>
+              <td class="num">${fmtUsd(coin.current_price)}</td>
+              <td class="num ${changeClass}">${change != null ? change.toFixed(2) + '%' : 'n/a'}</td>
+              <td class="num">${trendBadge(trend)}</td>
+            </tr>`;
+        }).join('');
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="4" class="status error">Couldn't load crypto data: ${err.message}</td></tr>`;
+      }
+    }
+
+    async function fetchStock() {
+      const keyInput = document.getElementById('finnhub-key');
+      const symbolInput = document.getElementById('stock-symbol');
+      const statusEl = document.getElementById('stock-status');
+      const tbody = document.getElementById('stock-rows');
+
+      const key = keyInput.value.trim();
+      const symbol = symbolInput.value.trim().toUpperCase();
+      if (!key || !symbol) {
+        statusEl.textContent = 'Enter both an API key and a symbol.';
+        statusEl.className = 'status error';
+        return;
+      }
+      localStorage.setItem('finnhubKey', key);
+      statusEl.textContent = 'Loading…';
+      statusEl.className = 'status';
+
+      try {
+        const [quoteRes, candleRes] = await Promise.all([
+          fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${key}`),
+          fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${symbol}&resolution=D&count=14&token=${key}`)
+        ]);
+        if (!quoteRes.ok) throw new Error('Quote request failed: ' + quoteRes.status);
+        const quote = await quoteRes.json();
+        if (quote.c === 0 && quote.pc === 0) throw new Error('No data for that symbol');
+
+        let trend = null;
+        if (candleRes.ok) {
+          const candles = await candleRes.json();
+          if (candles.s === 'ok' && Array.isArray(candles.c)) {
+            trend = predictTrend(candles.c);
+          }
+        }
+
+        const change = quote.d;
+        const changeClass = change > 0 ? 'up' : change < 0 ? 'down' : 'flat';
+        tbody.innerHTML = `
+          <tr>
+            <td>${symbol}</td>
+            <td class="num">${fmtUsd(quote.c)}</td>
+            <td class="num ${changeClass}">${change != null ? change.toFixed(2) : 'n/a'}</td>
+            <td class="num">${trendBadge(trend)}</td>
+          </tr>`;
+        statusEl.textContent = '';
+      } catch (err) {
+        statusEl.textContent = "Couldn't load stock data: " + err.message;
+        statusEl.className = 'status error';
+      }
+    }
+
+    document.getElementById('stock-fetch').addEventListener('click', fetchStock);
+    document.getElementById('stock-symbol').addEventListener('keydown', e => {
+      if (e.key === 'Enter') fetchStock();
+    });
+
+    const savedKey = localStorage.getItem('finnhubKey');
+    if (savedKey) document.getElementById('finnhub-key').value = savedKey;
+
+    loadCrypto();
+  </script>
+</body>
+</html>

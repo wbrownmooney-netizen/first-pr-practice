@@ -21,6 +21,21 @@ python -m http.server 8000
 
 then visit `http://localhost:8000`.
 
+## Crypto & stocks dashboard
+
+`trading.html` is a second standalone page: live crypto prices (via the
+[CoinGecko](https://www.coingecko.com/en/api) public API, no key needed)
+and stock quotes (via [Finnhub](https://finnhub.io/), which needs your own
+free API key — paste it into the page and it's stored only in your
+browser's local storage).
+
+Each row also shows a "next-step trend" of up/down/flat, computed as the
+sign of a least-squares line fit over the recent price history. **This is
+a naive statistics exercise, not investment advice** — the page does not
+place any real trades.
+
+Open it directly, or click through from `index.html`.
+
 ## Getting started
 
 1. Clone the repo: `git clone https://github.com/wbrownmooney-netizen/first-pr-practice.git`
