@@ -43,7 +43,7 @@ favors in either direction — still just a filtered view of the same data,
 not a recommendation.
 
 Crypto shows the top 20 coins by market cap automatically. Stocks come
-from a comma-separated watchlist — pre-filled with a default set of 20
+from a comma-separated watchlist — pre-filled with a default set of 10
 well-known large-cap symbols so there's something to see immediately once
 you add a Finnhub key, and freely editable to whatever you actually want
 to track. (Finnhub's free tier has no market-wide "top movers" feed, so
@@ -51,13 +51,15 @@ this default list stands in for a real screener — combine it with the
 Trending up/down filters to see which of those symbols are currently
 trending.)
 
-Stocks are fetched **one symbol at a time with a short delay between
-each**, not all at once — Finnhub's free tier rate-limits by requests per
-second, and firing a whole watchlist's worth of requests simultaneously
-triggers 429 (rate limited) errors before anything loads. Rows appear as
-each symbol comes back, so a full watchlist doesn't feel like a stall; if
-a symbol still fails (bad ticker, rate limit, etc.) the rest keep loading
-and the failure is reported separately.
+Stock requests are deliberately throttled to avoid Finnhub's free-tier
+rate limit: symbols are fetched **one at a time** (not all at once), each
+symbol's quote and candle requests go out **sequentially** rather than in
+parallel, and a request that comes back `429` (rate limited) is retried
+once after a short backoff before being reported as failed. A second scan
+can't start while one is already in flight. Rows appear as each symbol
+comes back, so a full watchlist doesn't feel like a stall; if a symbol
+still fails after the retry, the rest keep loading and the failure is
+reported separately.
 
 Open it directly, or click through from `index.html`.
 

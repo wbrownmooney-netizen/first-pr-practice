@@ -409,17 +409,37 @@
       ).join('');
     }
 
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    // Fetches a URL and, if Finnhub returns 429 (rate limited), waits
+    // once — honoring a Retry-After header if present, otherwise a fixed
+    // backoff — and tries again before giving up. A single retry is
+    // enough to ride out a momentary rate-limit window without making
+    // the whole watchlist scan fail.
+    async function fetchWithRetry(url) {
+      let res = await fetch(url);
+      if (res.status === 429) {
+        const retryAfter = parseInt(res.headers.get('Retry-After'), 10);
+        await sleep(Number.isFinite(retryAfter) ? retryAfter * 1000 : 3000);
+        res = await fetch(url);
+      }
+      return res;
+    }
+
+    // The quote and candle requests are made one after another, not in
+    // parallel, so a single symbol never puts more than one request in
+    // flight at once.
     async function fetchOneStock(symbol, key) {
-      const [quoteRes, candleRes] = await Promise.all([
-        fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${key}`),
-        fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${symbol}&resolution=D&count=14&token=${key}`)
-      ]);
+      const quoteRes = await fetchWithRetry(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${key}`);
       if (!quoteRes.ok) throw new Error('Quote request failed: ' + quoteRes.status);
       const quote = await quoteRes.json();
       if (quote.c === 0 && quote.pc === 0) throw new Error('No data for that symbol');
 
       let trend = null;
       let backtest = null;
+      const candleRes = await fetchWithRetry(`https://finnhub.io/api/v1/stock/candle?symbol=${symbol}&resolution=D&count=14&token=${key}`);
       if (candleRes.ok) {
         const candles = await candleRes.json();
         if (candles.s === 'ok' && Array.isArray(candles.c)) {
@@ -430,19 +450,19 @@
       return { symbol, price: quote.c, change: quote.d, trend, backtest };
     }
 
-    function sleep(ms) {
-      return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
     // Finnhub's free tier rate-limits by requests per second, not just
     // per minute — firing every symbol's requests at once (as
     // Promise.all/allSettled would) triggers 429s well before the
-    // watchlist finishes. Fetching one symbol at a time with a short
-    // gap between them, and rendering as results arrive, stays under
-    // that limit and gives faster visible feedback besides.
-    const STOCK_FETCH_DELAY_MS = 350;
+    // watchlist finishes. Fetching one symbol at a time, sequentially
+    // requesting quote then candle within it, with a gap between
+    // symbols, keeps requests spread out; the 429 retry above absorbs
+    // whatever momentary limiting still slips through.
+    const STOCK_FETCH_DELAY_MS = 500;
+    let stocksFetchInProgress = false;
 
     async function fetchStocks() {
+      if (stocksFetchInProgress) return;
+
       const keyInput = document.getElementById('finnhub-key');
       const symbolInput = document.getElementById('stock-symbol');
       const statusEl = document.getElementById('stock-status');
@@ -457,31 +477,36 @@
       localStorage.setItem('finnhubKey', key);
       localStorage.setItem('stockWatchlist', symbols.join(','));
 
-      stockData = [];
-      const failed = [];
-      const activeFilter = () => document.querySelector('#stock-filter .filter-btn.active').dataset.filter;
+      stocksFetchInProgress = true;
+      try {
+        stockData = [];
+        const failed = [];
+        const activeFilter = () => document.querySelector('#stock-filter .filter-btn.active').dataset.filter;
 
-      for (let i = 0; i < symbols.length; i++) {
-        statusEl.textContent = `Loading… (${i + 1}/${symbols.length})`;
-        statusEl.className = 'status';
-        try {
-          stockData.push(await fetchOneStock(symbols[i], key));
-          renderStocks(activeFilter());
-        } catch (err) {
-          failed.push({ symbol: symbols[i], error: err });
+        for (let i = 0; i < symbols.length; i++) {
+          statusEl.textContent = `Loading… (${i + 1}/${symbols.length})`;
+          statusEl.className = 'status';
+          try {
+            stockData.push(await fetchOneStock(symbols[i], key));
+            renderStocks(activeFilter());
+          } catch (err) {
+            failed.push({ symbol: symbols[i], error: err });
+          }
+          if (i < symbols.length - 1) await sleep(STOCK_FETCH_DELAY_MS);
         }
-        if (i < symbols.length - 1) await sleep(STOCK_FETCH_DELAY_MS);
+
+        renderStocks(activeFilter());
+        checkTrendChanges('stock', stockData.map(s => ({
+          key: s.symbol, label: s.symbol, trend: s.trend
+        })));
+
+        statusEl.textContent = failed.length
+          ? `Couldn't load: ${failed.map(f => `${f.symbol} (${f.error.message})`).join(', ')}`
+          : '';
+        statusEl.className = failed.length ? 'status error' : 'status';
+      } finally {
+        stocksFetchInProgress = false;
       }
-
-      renderStocks(activeFilter());
-      checkTrendChanges('stock', stockData.map(s => ({
-        key: s.symbol, label: s.symbol, trend: s.trend
-      })));
-
-      statusEl.textContent = failed.length
-        ? `Couldn't load: ${failed.map(f => `${f.symbol} (${f.error.message})`).join(', ')}`
-        : '';
-      statusEl.className = failed.length ? 'status error' : 'status';
     }
 
     document.getElementById('stock-fetch').addEventListener('click', fetchStocks);
@@ -497,9 +522,7 @@
     // instead — a reasonable starting point, not a live market screener.
     const DEFAULT_STOCK_WATCHLIST = [
       'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA',
-      'META', 'TSLA', 'JPM', 'V', 'UNH',
-      'XOM', 'JNJ', 'WMT', 'PG', 'MA',
-      'HD', 'CVX', 'KO', 'PEP', 'DIS'
+      'META', 'TSLA', 'JPM', 'V', 'DIS'
     ];
 
     const savedKey = localStorage.getItem('finnhubKey');
