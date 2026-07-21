@@ -219,6 +219,7 @@
     </section>
   </div>
 
+  <script src="portfolio.js"></script>
   <script>
     const STARTING_CASH = 10000;
     const STATE_KEY = 'paperPortfolio';
@@ -369,19 +370,15 @@
             statusEl.className = 'status error';
             return;
           }
-          const existing = state.positions[key2] || { quantity: 0, avgCost: 0 };
-          const newQuantity = existing.quantity + quantity;
-          const newAvgCost = (existing.avgCost * existing.quantity + cost) / newQuantity;
-          state.positions[key2] = { quantity: newQuantity, avgCost: newAvgCost };
+          state.positions[key2] = buyPosition(state.positions[key2], quantity, price);
           state.cash -= cost;
         } else {
-          const existing = state.positions[key2];
-          if (!existing || existing.quantity < quantity) {
+          if (!state.positions[key2] || state.positions[key2].quantity < quantity) {
             statusEl.textContent = `You don't hold enough ${normSymbol} to sell ${quantity}.`;
             statusEl.className = 'status error';
             return;
           }
-          existing.quantity -= quantity;
+          state.positions[key2] = sellPosition(state.positions[key2], quantity);
           state.cash += cost;
         }
 
