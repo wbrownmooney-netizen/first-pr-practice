@@ -37,6 +37,16 @@ is a naive statistics exercise, not investment advice** — a small sample
 of past accuracy says nothing about future results, and the page does
 not place any real trades.
 
+Both tables have **Trending up** / **Trending down** filter buttons, so you
+can see at a glance which coins or watchlist stocks the signal currently
+favors in either direction — still just a filtered view of the same data,
+not a recommendation.
+
+Crypto shows the top 20 coins by market cap automatically. Stocks are
+scanned from a comma-separated watchlist you type in (e.g. `AAPL, TSLA,
+MSFT`), fetched in parallel; if a symbol fails (bad ticker, rate limit,
+etc.) the rest still load and the failure is reported separately.
+
 Open it directly, or click through from `index.html`.
 
 The trend/accuracy logic lives in `signals.js`, shared by the page and by
