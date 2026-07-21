@@ -81,6 +81,14 @@ tab is open — closing it stops them. Whatever triggered an alert also
 gets its row highlighted in the table (a brief pulse, then a steady
 tint) for about two minutes, so it's easy to spot which one changed.
 
+The dashboard is aware of your [paper trading](#paper-trading-simulator)
+holdings (read from the same browser's localStorage — no extra setup):
+anything you currently hold gets a **HELD** badge next to its name, is
+automatically added to the stock watchlist and fetched even if outside
+crypto's top 20 by market cap, and its alert notification says so
+explicitly. This is read-only awareness, not a recommendation to act on —
+same disclaimer as everywhere else on this page.
+
 The trend/accuracy logic lives in `signals.js`, shared by the page and by
 `test.html`, which runs a handful of known-input/known-output checks and
 shows pass/fail results in the browser — open it directly to run the

@@ -84,6 +84,18 @@
     0%, 100% { background: var(--alert-bg); }
     50% { background: var(--alert-bg-strong); }
   }
+  .held-badge {
+    display: inline-block;
+    background: var(--accent);
+    color: white;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    margin-right: 0.35rem;
+    vertical-align: middle;
+  }
   .up { color: var(--up); font-weight: 600; }
   .down { color: var(--down); font-weight: 600; }
   .flat { color: var(--muted); }
@@ -303,11 +315,39 @@
       });
     }
 
-    function rowHtml(name, price, change, trend, backtest, restricted, highlighted) {
+    // Reads paper.html's simulated portfolio (same localStorage the
+    // simulator itself uses) so held positions can be flagged here too.
+    // Read fresh each call rather than cached, since paper.html may have
+    // changed it in another tab; missing/corrupt state is just treated
+    // as "no holdings" rather than an error.
+    function getHeldPositions() {
+      const cryptoIds = new Set();
+      const stockSymbols = new Set();
+      try {
+        const raw = localStorage.getItem('paperPortfolio');
+        if (raw) {
+          const state = JSON.parse(raw);
+          for (const key in (state.positions || {})) {
+            const pos = state.positions[key];
+            if (!pos || pos.quantity <= 0) continue;
+            const [type, symbol] = key.split(':');
+            if (type === 'crypto') cryptoIds.add(symbol);
+            else if (type === 'stock') stockSymbols.add(symbol);
+          }
+        }
+      } catch (e) { /* corrupt localStorage state — treat as no holdings */ }
+      return { cryptoIds, stockSymbols };
+    }
+
+    function heldBadge(held) {
+      return held ? '<span class="held-badge" title="You hold this in your paper portfolio">HELD</span>' : '';
+    }
+
+    function rowHtml(name, price, change, trend, backtest, restricted, highlighted, held) {
       const changeClass = change > 0 ? 'up' : change < 0 ? 'down' : 'flat';
       return `
         <tr class="${highlighted ? 'alert-highlight' : ''}">
-          <td>${name}</td>
+          <td>${heldBadge(held)}${name}</td>
           <td class="num">${fmtUsd(price)}</td>
           <td class="num ${changeClass}">${change != null ? change.toFixed(2) + '%' : 'n/a'}</td>
           <td class="num">${trendBadge(trend, restricted)}</td>
@@ -341,12 +381,14 @@
     }
 
     function checkTrendChanges(type, items) {
-      for (const { key, label, trend } of items) {
+      for (const { key, label, trend, held } of items) {
         const compositeKey = `${type}:${key}`;
         const prev = previousTrends[compositeKey];
         if (alertsEnabled && prev && prev !== trend && (trend === 'up' || trend === 'down')) {
-          notify(`${label} is now trending ${trend}`,
-            'Naive trend signal changed — not investment advice.');
+          const body = held
+            ? 'You hold this in your paper portfolio — naive trend signal changed, not investment advice.'
+            : 'Naive trend signal changed — not investment advice.';
+          notify(`${label} is now trending ${trend}`, body);
           recentAlerts.set(compositeKey, Date.now());
         }
         previousTrends[compositeKey] = trend;
@@ -401,10 +443,11 @@
         tbody.innerHTML = `<tr><td colspan="5" class="status">Nothing currently trending ${filter}.</td></tr>`;
         return;
       }
+      const held = getHeldPositions();
       tbody.innerHTML = rows.map(c =>
         rowHtml(`${c.coin.name} <span class="hint">(${c.coin.symbol.toUpperCase()})</span>`,
           c.coin.current_price, c.coin.price_change_percentage_24h, c.trend, c.backtest,
-          false, isRecentlyAlerted(`crypto:${c.coin.id}`))
+          false, isRecentlyAlerted(`crypto:${c.coin.id}`), held.cryptoIds.has(c.coin.id))
       ).join('');
     }
 
@@ -415,7 +458,23 @@
           'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=20&page=1&sparkline=true'
         );
         if (!res.ok) throw new Error('CoinGecko request failed: ' + res.status);
-        const coins = await res.json();
+        let coins = await res.json();
+
+        // Paper-trading holdings outside the top 20 by market cap would
+        // otherwise never get fetched at all, so never show a trend or
+        // fire an alert. Fetch those specifically, best-effort — if this
+        // extra call fails, the top-20 list still renders normally.
+        const held = getHeldPositions();
+        const missingIds = [...held.cryptoIds].filter(id => !coins.some(c => c.id === id));
+        if (missingIds.length > 0) {
+          try {
+            const extraRes = await fetch(
+              `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${missingIds.join(',')}&sparkline=true`
+            );
+            if (extraRes.ok) coins = coins.concat(await extraRes.json());
+          } catch (e) { /* best-effort — top 20 still renders without it */ }
+        }
+
         cryptoData = coins.map(coin => {
           const sparkline = (coin.sparkline_in_7d && coin.sparkline_in_7d.price) || [];
           return {
@@ -425,7 +484,7 @@
           };
         });
         checkTrendChanges('crypto', cryptoData.map(c => ({
-          key: c.coin.id, label: c.coin.name, trend: c.trend
+          key: c.coin.id, label: c.coin.name, trend: c.trend, held: held.cryptoIds.has(c.coin.id)
         })));
         const activeFilter = document.querySelector('#crypto-filter .filter-btn.active').dataset.filter;
         renderCrypto(activeFilter);
@@ -443,9 +502,10 @@
         tbody.innerHTML = `<tr><td colspan="5" class="status">Nothing currently trending ${filter}.</td></tr>`;
         return;
       }
+      const held = getHeldPositions();
       tbody.innerHTML = rows.map(s =>
         rowHtml(s.symbol, s.price, s.change, s.trend, s.backtest,
-          s.noHistorySource, isRecentlyAlerted(`stock:${s.symbol}`))
+          s.noHistorySource, isRecentlyAlerted(`stock:${s.symbol}`), held.stockSymbols.has(s.symbol))
       ).join('');
     }
 
@@ -558,8 +618,9 @@
           if (i < symbols.length - 1) await sleep(delay);
         }
 
+        const held = getHeldPositions();
         checkTrendChanges('stock', stockData.map(s => ({
-          key: s.symbol, label: s.symbol, trend: s.trend
+          key: s.symbol, label: s.symbol, trend: s.trend, held: held.stockSymbols.has(s.symbol)
         })));
         renderStocks(activeFilter());
 
@@ -593,7 +654,15 @@
     const savedTwelveDataKey = localStorage.getItem('twelveDataKey');
     if (savedTwelveDataKey) document.getElementById('twelvedata-key').value = savedTwelveDataKey;
     const savedWatchlist = localStorage.getItem('stockWatchlist');
-    document.getElementById('stock-symbol').value = savedWatchlist || DEFAULT_STOCK_WATCHLIST.join(', ');
+    const baseWatchlist = savedWatchlist
+      ? savedWatchlist.split(',').map(s => s.trim()).filter(Boolean)
+      : DEFAULT_STOCK_WATCHLIST;
+    // Always include anything currently held in the paper-trading
+    // portfolio, even if it was never manually added to the watchlist —
+    // otherwise a held stock could silently never get scanned or alerted on.
+    const heldStocks = [...getHeldPositions().stockSymbols];
+    const mergedWatchlist = Array.from(new Set([...baseWatchlist, ...heldStocks]));
+    document.getElementById('stock-symbol').value = mergedWatchlist.join(', ');
 
     loadCrypto();
     if (savedKey) fetchStocks();
