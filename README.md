@@ -77,7 +77,9 @@ An **"Enable live alerts"** button turns on browser notifications: while
 the tab stays open, the page re-polls every 60 seconds and fires a
 notification whenever a coin or watchlist stock's trend flips to up or
 down. There's no backend behind this page, so alerts only fire while the
-tab is open — closing it stops them.
+tab is open — closing it stops them. Whatever triggered an alert also
+gets its row highlighted in the table (a brief pulse, then a steady
+tint) for about two minutes, so it's easy to spot which one changed.
 
 The trend/accuracy logic lives in `signals.js`, shared by the page and by
 `test.html`, which runs a handful of known-input/known-output checks and

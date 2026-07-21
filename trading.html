@@ -19,6 +19,8 @@
     --warn-bg: #fff7e6;
     --warn-border: #f5c451;
     --warn-text: #7a5b00;
+    --alert-bg: rgba(37, 99, 235, 0.12);
+    --alert-bg-strong: rgba(37, 99, 235, 0.28);
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -34,6 +36,8 @@
       --warn-bg: #2a230f;
       --warn-border: #7a5b00;
       --warn-text: #f5c451;
+      --alert-bg: rgba(59, 130, 246, 0.18);
+      --alert-bg-strong: rgba(59, 130, 246, 0.36);
     }
   }
   * { box-sizing: border-box; }
@@ -75,6 +79,11 @@
   th, td { text-align: left; padding: 0.5rem 0.4rem; border-bottom: 1px solid var(--border); }
   th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; }
   td.num, th.num { text-align: right; }
+  tr.alert-highlight { background: var(--alert-bg); animation: alert-pulse 1.2s ease-in-out 2; }
+  @keyframes alert-pulse {
+    0%, 100% { background: var(--alert-bg); }
+    50% { background: var(--alert-bg-strong); }
+  }
   .up { color: var(--up); font-weight: 600; }
   .down { color: var(--down); font-weight: 600; }
   .flat { color: var(--muted); }
@@ -144,7 +153,9 @@
         Get a browser notification whenever a coin or watchlist stock's
         trend flips to up or down. This only works while this tab stays
         open in your browser &mdash; there's no server behind this page,
-        so it can't notify you after you close it.
+        so it can't notify you after you close it. Whatever triggered an
+        alert also gets its row highlighted in the table below for a
+        couple of minutes, so it's easy to spot at a glance.
       </p>
       <div class="row-inline">
         <button id="alerts-toggle">Enable live alerts</button>
@@ -292,10 +303,10 @@
       });
     }
 
-    function rowHtml(name, price, change, trend, backtest, restricted) {
+    function rowHtml(name, price, change, trend, backtest, restricted, highlighted) {
       const changeClass = change > 0 ? 'up' : change < 0 ? 'down' : 'flat';
       return `
-        <tr>
+        <tr class="${highlighted ? 'alert-highlight' : ''}">
           <td>${name}</td>
           <td class="num">${fmtUsd(price)}</td>
           <td class="num ${changeClass}">${change != null ? change.toFixed(2) + '%' : 'n/a'}</td>
@@ -309,15 +320,24 @@
     // or down. Only runs while this tab is open (no backend/service
     // worker to notify after the page closes). `previousTrends` tracks
     // the last-seen trend per symbol so we only alert on a *change*,
-    // not on every poll.
+    // not on every poll. `recentAlerts` tracks when each symbol last
+    // triggered a real alert, so its row can be highlighted in the
+    // table for a while afterward.
     let alertsEnabled = false;
     let alertsTimer = null;
     const previousTrends = {};
+    const recentAlerts = new Map();
+    const ALERT_HIGHLIGHT_MS = 2 * 60 * 1000;
 
     function notify(title, body) {
       if (Notification.permission === 'granted') {
         new Notification(title, { body });
       }
+    }
+
+    function isRecentlyAlerted(compositeKey) {
+      const firedAt = recentAlerts.get(compositeKey);
+      return firedAt != null && (Date.now() - firedAt) < ALERT_HIGHLIGHT_MS;
     }
 
     function checkTrendChanges(type, items) {
@@ -327,6 +347,7 @@
         if (alertsEnabled && prev && prev !== trend && (trend === 'up' || trend === 'down')) {
           notify(`${label} is now trending ${trend}`,
             'Naive trend signal changed — not investment advice.');
+          recentAlerts.set(compositeKey, Date.now());
         }
         previousTrends[compositeKey] = trend;
       }
@@ -382,7 +403,8 @@
       }
       tbody.innerHTML = rows.map(c =>
         rowHtml(`${c.coin.name} <span class="hint">(${c.coin.symbol.toUpperCase()})</span>`,
-          c.coin.current_price, c.coin.price_change_percentage_24h, c.trend, c.backtest)
+          c.coin.current_price, c.coin.price_change_percentage_24h, c.trend, c.backtest,
+          false, isRecentlyAlerted(`crypto:${c.coin.id}`))
       ).join('');
     }
 
@@ -422,7 +444,8 @@
         return;
       }
       tbody.innerHTML = rows.map(s =>
-        rowHtml(s.symbol, s.price, s.change, s.trend, s.backtest, s.noHistorySource)
+        rowHtml(s.symbol, s.price, s.change, s.trend, s.backtest,
+          s.noHistorySource, isRecentlyAlerted(`stock:${s.symbol}`))
       ).join('');
     }
 
@@ -535,10 +558,10 @@
           if (i < symbols.length - 1) await sleep(delay);
         }
 
-        renderStocks(activeFilter());
         checkTrendChanges('stock', stockData.map(s => ({
           key: s.symbol, label: s.symbol, trend: s.trend
         })));
+        renderStocks(activeFilter());
 
         statusEl.textContent = failed.length
           ? `Couldn't load: ${failed.map(f => `${f.symbol} (${f.error.message})`).join(', ')}`
