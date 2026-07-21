@@ -83,6 +83,8 @@
   th, td { text-align: left; padding: 0.5rem 0.4rem; border-bottom: 1px solid var(--border); }
   th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; }
   td.num, th.num { text-align: right; }
+  .table-scroll { max-height: 480px; overflow-y: auto; }
+  .table-scroll thead th { position: sticky; top: 0; background: var(--card); }
   tr.alert-highlight { background: var(--alert-bg); animation: alert-pulse 1.2s ease-in-out 2; }
   @keyframes alert-pulse {
     0%, 100% { background: var(--alert-bg); }
@@ -223,20 +225,22 @@
         <button class="filter-btn" data-filter="up">Trending up</button>
         <button class="filter-btn" data-filter="down">Trending down</button>
       </div>
-      <table>
-        <thead>
-          <tr>
-            <th>Coin</th>
-            <th class="num">Price (USD)</th>
-            <th class="num">24h Change</th>
-            <th class="num" title="A guess at the price direction, based on recent history">Trend</th>
-            <th class="num" title="How often this same guess has been right in the recent past">Accuracy</th>
-          </tr>
-        </thead>
-        <tbody id="crypto-rows">
-          <tr><td colspan="5" class="status">Loading&hellip;</td></tr>
-        </tbody>
-      </table>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Coin</th>
+              <th class="num">Price (USD)</th>
+              <th class="num">24h Change</th>
+              <th class="num" title="A guess at the price direction, based on recent history">Trend</th>
+              <th class="num" title="How often this same guess has been right in the recent past">Accuracy</th>
+            </tr>
+          </thead>
+          <tbody id="crypto-rows">
+            <tr><td colspan="5" class="status">Loading&hellip;</td></tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <section id="stocks-section">
@@ -558,15 +562,18 @@
       const tbody = document.getElementById('crypto-rows');
       try {
         const res = await fetch(
-          'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=20&page=1&sparkline=true'
+          'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&sparkline=true'
         );
         if (!res.ok) throw new Error('CoinGecko request failed: ' + res.status);
         let coins = await res.json();
 
-        // Paper-trading holdings outside the top 20 by market cap would
-        // otherwise never get fetched at all, so never show a trend or
-        // fire an alert. Fetch those specifically, best-effort — if this
-        // extra call fails, the top-20 list still renders normally.
+        // 250 is CoinGecko's max per request — comfortably covers
+        // anything anyone's likely to ask about, but it's still "top
+        // 250 by market cap," not literally every coin that exists.
+        // Paper-trading holdings outside even that would otherwise
+        // never get fetched at all, so never show a trend or fire an
+        // alert. Fetch those specifically, best-effort — if this extra
+        // call fails, the top-250 list still renders normally.
         const held = getHeldPositions();
         const missingIds = [...held.cryptoIds].filter(id => !coins.some(c => c.id === id));
         if (missingIds.length > 0) {
@@ -575,7 +582,7 @@
               `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${missingIds.join(',')}&sparkline=true`
             );
             if (extraRes.ok) coins = coins.concat(await extraRes.json());
-          } catch (e) { /* best-effort — top 20 still renders without it */ }
+          } catch (e) { /* best-effort — top-250 list still renders without it */ }
         }
 
         cryptoData = coins.map(coin => {
