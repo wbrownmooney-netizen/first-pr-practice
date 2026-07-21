@@ -125,6 +125,23 @@
       or places real trades.
     </div>
 
+    <section id="explainer-section">
+      <h2>New here? Start with this</h2>
+      <p style="margin-top:0;">This page shows two things for each coin or stock:</p>
+      <ul style="margin:0; padding-left: 1.2rem; line-height: 1.7;">
+        <li><strong>Trend</strong> &mdash; a guess at which way the price is
+          leaning right now (up, down, or flat), based only on recent
+          prices. It's a simple statistics calculation, not a prediction
+          from an expert.</li>
+        <li><strong>Accuracy</strong> &mdash; if you'd trusted that same
+          guess in the past, how often would it have been right? A number
+          near 50% means "no better than a coin flip." Higher doesn't mean
+          reliable going forward &mdash; it's a small, recent sample.</li>
+      </ul>
+      <p class="hint">Nothing here tells you what to buy or sell &mdash; it's meant for
+        learning how these signals behave, not for making real decisions.</p>
+    </section>
+
     <section id="crypto-section">
       <h2>Crypto (live, via CoinGecko)</h2>
       <table>
@@ -133,8 +150,8 @@
             <th>Coin</th>
             <th class="num">Price (USD)</th>
             <th class="num">24h Change</th>
-            <th class="num">Next-step trend</th>
-            <th class="num">Historical accuracy</th>
+            <th class="num" title="A guess at the price direction, based on recent history">Trend</th>
+            <th class="num" title="How often this same guess has been right in the recent past">Accuracy</th>
           </tr>
         </thead>
         <tbody id="crypto-rows">
@@ -145,25 +162,25 @@
 
     <section id="stocks-section">
       <h2>Stocks</h2>
+      <p class="hint" style="margin-top:0;">Stock data needs a free API key. If you don't have one yet:</p>
+      <ol style="margin: 0 0 0.9rem; padding-left: 1.2rem; line-height: 1.7; font-size: 0.85rem; color: var(--muted);">
+        <li>Go to <a href="https://finnhub.io/register" target="_blank" rel="noopener">finnhub.io/register</a> and sign up (it's free)</li>
+        <li>Once logged in, copy the API key shown on your Finnhub dashboard</li>
+        <li>Paste it into the box below &mdash; it stays saved only in this browser, and is never sent anywhere but Finnhub</li>
+      </ol>
       <div class="row-inline">
         <input id="finnhub-key" type="password" placeholder="Your free Finnhub API key" autocomplete="off">
         <input id="stock-symbol" type="text" placeholder="Symbol, e.g. AAPL" autocomplete="off" style="max-width: 140px;">
         <button id="stock-fetch">Get quote</button>
       </div>
-      <p class="hint">
-        Stock data needs a free API key from
-        <a href="https://finnhub.io/register" target="_blank" rel="noopener">finnhub.io</a>
-        (you create and paste in your own key &mdash; it's stored only in
-        this browser's local storage, never sent anywhere but Finnhub).
-      </p>
       <table>
         <thead>
           <tr>
             <th>Symbol</th>
             <th class="num">Price (USD)</th>
             <th class="num">Change</th>
-            <th class="num">Next-step trend</th>
-            <th class="num">Historical accuracy</th>
+            <th class="num" title="A guess at the price direction, based on recent history">Trend</th>
+            <th class="num" title="How often this same guess has been right in the recent past">Accuracy</th>
           </tr>
         </thead>
         <tbody id="stock-rows">
@@ -221,10 +238,13 @@
     }
 
     function accuracyLabel(result) {
-      if (!result || result.trials < 5) return '<span class="flat">not enough data</span>';
+      if (!result || result.trials < 5) return '<span class="flat">not enough data yet</span>';
       const pct = (result.accuracy * 100).toFixed(0);
       const cls = result.accuracy >= 0.5 ? 'up' : 'down';
-      return `<span class="${cls}">${pct}%</span> <span class="hint">(${result.trials} samples)</span>`;
+      const plain = result.accuracy >= 0.5
+        ? 'slightly better than a coin flip'
+        : 'no better than a coin flip';
+      return `<span class="${cls}">${pct}%</span> <span class="hint">(${result.trials} tries, ${plain})</span>`;
     }
 
     function fmtUsd(n) {
