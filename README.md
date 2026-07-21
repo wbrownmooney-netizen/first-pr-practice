@@ -39,6 +39,11 @@ not place any real trades.
 
 Open it directly, or click through from `index.html`.
 
+The trend/accuracy logic lives in `signals.js`, shared by the page and by
+`test.html`, which runs a handful of known-input/known-output checks and
+shows pass/fail results in the browser — open it directly to run the
+tests, no build step or test runner needed.
+
 ## Getting started
 
 1. Clone the repo: `git clone https://github.com/wbrownmooney-netizen/first-pr-practice.git`

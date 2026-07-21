@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Signal logic tests</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --text: #1a1a1a;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --pass: #16a34a;
+    --fail: #dc2626;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115;
+      --card: #1a1d24;
+      --text: #f2f2f2;
+      --muted: #9ca3af;
+      --border: #2a2e37;
+      --pass: #4ade80;
+      --fail: #f87171;
+    }
+  }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 2rem 1rem 4rem;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; }
+  #summary { font-weight: 600; margin: 1rem 0; }
+  ul { list-style: none; padding: 0; margin: 0; }
+  li {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.6rem 0.9rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .pass { color: var(--pass); }
+  .fail { color: var(--fail); }
+  .detail { color: var(--muted); font-size: 0.8rem; margin-top: 0.2rem; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Signal logic tests</h1>
+    <p>Checks <code>predictTrend</code> and <code>backtestSignal</code> from
+      <code>signals.js</code> against known inputs and outputs.</p>
+    <p id="summary"></p>
+    <ul id="results"></ul>
+  </div>
+
+  <script src="signals.js"></script>
+  <script>
+    const tests = [];
+    function test(name, fn) { tests.push({ name, fn }); }
+    function assertEqual(actual, expected, label) {
+      const a = JSON.stringify(actual);
+      const e = JSON.stringify(expected);
+      if (a !== e) throw new Error(`${label}: expected ${e}, got ${a}`);
+    }
+
+    test('predictTrend: rising prices -> up', () => {
+      assertEqual(predictTrend([1, 2, 3, 4, 5]), 'up', 'trend');
+    });
+
+    test('predictTrend: falling prices -> down', () => {
+      assertEqual(predictTrend([5, 4, 3, 2, 1]), 'down', 'trend');
+    });
+
+    test('predictTrend: constant prices -> flat', () => {
+      assertEqual(predictTrend([3, 3, 3, 3]), 'flat', 'trend');
+    });
+
+    test('predictTrend: fewer than 2 points -> null', () => {
+      assertEqual(predictTrend([1]), null, 'trend');
+      assertEqual(predictTrend([]), null, 'trend');
+    });
+
+    test('backtestSignal: perfectly monotonic series is 100% accurate', () => {
+      const prices = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+      assertEqual(backtestSignal(prices, 2), { accuracy: 1, trials: 7 }, 'backtest');
+    });
+
+    test('backtestSignal: flat series has no scoreable trials -> null', () => {
+      assertEqual(backtestSignal(Array(8).fill(5), 2), null, 'backtest');
+    });
+
+    test('backtestSignal: window bigger than data -> null', () => {
+      assertEqual(backtestSignal([1, 2, 3], 5), null, 'backtest');
+    });
+
+    const resultsEl = document.getElementById('results');
+    let passed = 0;
+    for (const { name, fn } of tests) {
+      const li = document.createElement('li');
+      try {
+        fn();
+        passed++;
+        li.innerHTML = `<span class="pass">PASS</span> ${name}`;
+      } catch (err) {
+        li.innerHTML = `<span class="fail">FAIL</span> ${name}<div class="detail">${err.message}</div>`;
+      }
+      resultsEl.appendChild(li);
+    }
+    const summary = document.getElementById('summary');
+    summary.textContent = `${passed} / ${tests.length} passed`;
+    summary.className = passed === tests.length ? 'pass' : 'fail';
+  </script>
+</body>
+</html>
