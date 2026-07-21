@@ -439,7 +439,12 @@
 
       let trend = null;
       let backtest = null;
-      const candleRes = await fetchWithRetry(`https://finnhub.io/api/v1/stock/candle?symbol=${symbol}&resolution=D&count=14&token=${key}`);
+      // Finnhub's candle endpoint takes a from/to Unix-timestamp range,
+      // not a count — 90 calendar days back gives roughly 60 trading
+      // days of daily closes, comfortably more than the backtest needs.
+      const to = Math.floor(Date.now() / 1000);
+      const from = to - 90 * 24 * 60 * 60;
+      const candleRes = await fetchWithRetry(`https://finnhub.io/api/v1/stock/candle?symbol=${symbol}&resolution=D&from=${from}&to=${to}&token=${key}`);
       if (candleRes.ok) {
         const candles = await candleRes.json();
         if (candles.s === 'ok' && Array.isArray(candles.c)) {

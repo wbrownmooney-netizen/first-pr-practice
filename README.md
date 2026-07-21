@@ -61,6 +61,11 @@ comes back, so a full watchlist doesn't feel like a stall; if a symbol
 still fails after the retry, the rest keep loading and the failure is
 reported separately.
 
+The candle request that feeds the stock trend/accuracy columns asks for a
+90-day `from`/`to` range (roughly 60 trading days) rather than a fixed
+count, since Finnhub's API takes a Unix-timestamp range, not a count
+parameter.
+
 Open it directly, or click through from `index.html`.
 
 An **"Enable live alerts"** button turns on browser notifications: while
