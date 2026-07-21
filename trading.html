@@ -138,6 +138,20 @@
       or places real trades.
     </div>
 
+    <section id="alerts-section">
+      <h2>Live trend alerts</h2>
+      <p class="hint" style="margin-top:0;">
+        Get a browser notification whenever a coin or watchlist stock's
+        trend flips to up or down. This only works while this tab stays
+        open in your browser &mdash; there's no server behind this page,
+        so it can't notify you after you close it.
+      </p>
+      <div class="row-inline">
+        <button id="alerts-toggle">Enable live alerts</button>
+        <span id="alerts-status" class="status"></span>
+      </div>
+    </section>
+
     <section id="explainer-section">
       <h2>New here? Start with this</h2>
       <p style="margin-top:0;">This page shows two things for each coin or stock:</p>
@@ -265,6 +279,73 @@
         </tr>`;
     }
 
+    // --- Live trend alerts -------------------------------------------
+    // Browser notifications fired when a coin/stock's trend flips to up
+    // or down. Only runs while this tab is open (no backend/service
+    // worker to notify after the page closes). `previousTrends` tracks
+    // the last-seen trend per symbol so we only alert on a *change*,
+    // not on every poll.
+    let alertsEnabled = false;
+    let alertsTimer = null;
+    const previousTrends = {};
+
+    function notify(title, body) {
+      if (Notification.permission === 'granted') {
+        new Notification(title, { body });
+      }
+    }
+
+    function checkTrendChanges(type, items) {
+      for (const { key, label, trend } of items) {
+        const compositeKey = `${type}:${key}`;
+        const prev = previousTrends[compositeKey];
+        if (alertsEnabled && prev && prev !== trend && (trend === 'up' || trend === 'down')) {
+          notify(`${label} is now trending ${trend}`,
+            'Naive trend signal changed — not investment advice.');
+        }
+        previousTrends[compositeKey] = trend;
+      }
+    }
+
+    function pollStocksIfConfigured() {
+      const key = document.getElementById('finnhub-key').value.trim();
+      const symbols = document.getElementById('stock-symbol').value.trim();
+      if (key && symbols) fetchStocks();
+    }
+
+    function setAlertsUi(enabled, message) {
+      const btn = document.getElementById('alerts-toggle');
+      const statusEl = document.getElementById('alerts-status');
+      btn.textContent = enabled ? 'Disable live alerts' : 'Enable live alerts';
+      statusEl.textContent = message || '';
+      statusEl.className = 'status';
+    }
+
+    document.getElementById('alerts-toggle').addEventListener('click', () => {
+      if (alertsEnabled) {
+        alertsEnabled = false;
+        clearInterval(alertsTimer);
+        setAlertsUi(false, 'Alerts paused.');
+        return;
+      }
+      if (!('Notification' in window)) {
+        setAlertsUi(false, "Your browser doesn't support notifications.");
+        return;
+      }
+      Notification.requestPermission().then(permission => {
+        if (permission !== 'granted') {
+          setAlertsUi(false, 'Notification permission denied — enable it for this site in your browser settings to use alerts.');
+          return;
+        }
+        alertsEnabled = true;
+        setAlertsUi(true, 'Watching for trend changes every 60s while this tab stays open.');
+        alertsTimer = setInterval(() => {
+          loadCrypto();
+          pollStocksIfConfigured();
+        }, 60000);
+      });
+    });
+
     let cryptoData = [];
 
     function renderCrypto(filter) {
@@ -296,6 +377,9 @@
             backtest: backtestSignal(sparkline, 24)
           };
         });
+        checkTrendChanges('crypto', cryptoData.map(c => ({
+          key: c.coin.id, label: c.coin.name, trend: c.trend
+        })));
         const activeFilter = document.querySelector('#crypto-filter .filter-btn.active').dataset.filter;
         renderCrypto(activeFilter);
       } catch (err) {
@@ -361,6 +445,9 @@
         .map((r, i) => ({ r, symbol: symbols[i] }))
         .filter(x => x.r.status === 'rejected');
 
+      checkTrendChanges('stock', stockData.map(s => ({
+        key: s.symbol, label: s.symbol, trend: s.trend
+      })));
       const activeFilter = document.querySelector('#stock-filter .filter-btn.active').dataset.filter;
       renderStocks(activeFilter);
 

@@ -49,6 +49,12 @@ etc.) the rest still load and the failure is reported separately.
 
 Open it directly, or click through from `index.html`.
 
+An **"Enable live alerts"** button turns on browser notifications: while
+the tab stays open, the page re-polls every 60 seconds and fires a
+notification whenever a coin or watchlist stock's trend flips to up or
+down. There's no backend behind this page, so alerts only fire while the
+tab is open — closing it stops them.
+
 The trend/accuracy logic lives in `signals.js`, shared by the page and by
 `test.html`, which runs a handful of known-input/known-output checks and
 shows pass/fail results in the browser — open it directly to run the
