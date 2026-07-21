@@ -30,9 +30,12 @@ free API key — paste it into the page and it's stored only in your
 browser's local storage).
 
 Each row also shows a "next-step trend" of up/down/flat, computed as the
-sign of a least-squares line fit over the recent price history. **This is
-a naive statistics exercise, not investment advice** — the page does not
-place any real trades.
+sign of a least-squares line fit over the recent price history, plus a
+"historical accuracy" figure: how often that same signal matched the
+actual next move when walked backward over recent price history. **This
+is a naive statistics exercise, not investment advice** — a small sample
+of past accuracy says nothing about future results, and the page does
+not place any real trades.
 
 Open it directly, or click through from `index.html`.
 

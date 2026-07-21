@@ -111,15 +111,18 @@
   <div class="wrap">
     <header>
       <h1>Crypto &amp; Stocks Dashboard</h1>
-      <p>Live prices with a simple trend prediction</p>
+      <p>Live prices with a simple trend signal and its backtested accuracy</p>
       <nav class="top"><a href="index.html">&larr; back to counter app</a></nav>
     </header>
 
     <div class="disclaimer">
       <strong>Not financial advice.</strong> Predictions here are a naive
       linear-trend extrapolation over recent price data &mdash; a statistics
-      exercise, not a forecast you should trade on. Nothing on this page
-      buys, sells, or places real trades.
+      exercise, not a forecast you should trade on. "Historical accuracy"
+      is how often that same naive signal matched the next move over a
+      small, recent sample &mdash; past accuracy on a handful of data points
+      says nothing about future results. Nothing on this page buys, sells,
+      or places real trades.
     </div>
 
     <section id="crypto-section">
@@ -131,10 +134,11 @@
             <th class="num">Price (USD)</th>
             <th class="num">24h Change</th>
             <th class="num">Next-step trend</th>
+            <th class="num">Historical accuracy</th>
           </tr>
         </thead>
         <tbody id="crypto-rows">
-          <tr><td colspan="4" class="status">Loading&hellip;</td></tr>
+          <tr><td colspan="5" class="status">Loading&hellip;</td></tr>
         </tbody>
       </table>
     </section>
@@ -159,10 +163,11 @@
             <th class="num">Price (USD)</th>
             <th class="num">Change</th>
             <th class="num">Next-step trend</th>
+            <th class="num">Historical accuracy</th>
           </tr>
         </thead>
         <tbody id="stock-rows">
-          <tr><td colspan="4" class="status">Enter a key and symbol above.</td></tr>
+          <tr><td colspan="5" class="status">Enter a key and symbol above.</td></tr>
         </tbody>
       </table>
       <p id="stock-status" class="status"></p>
@@ -197,6 +202,31 @@
       return '<span class="flat">n/a</span>';
     }
 
+    // Walks the same naive signal forward through history: at each point,
+    // predict the next step from the preceding `window` prices, then check
+    // whether that prediction matched what actually happened next. This is
+    // a backtest over a small recent sample, not a guarantee of future
+    // performance.
+    function backtestSignal(prices, window) {
+      let correct = 0, trials = 0;
+      for (let i = window; i < prices.length - 1; i++) {
+        const predicted = predictTrend(prices.slice(i - window, i));
+        if (predicted === 'flat' || predicted === null) continue;
+        const delta = prices[i + 1] - prices[i];
+        const actual = delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat';
+        trials++;
+        if (predicted === actual) correct++;
+      }
+      return trials > 0 ? { accuracy: correct / trials, trials } : null;
+    }
+
+    function accuracyLabel(result) {
+      if (!result || result.trials < 5) return '<span class="flat">not enough data</span>';
+      const pct = (result.accuracy * 100).toFixed(0);
+      const cls = result.accuracy >= 0.5 ? 'up' : 'down';
+      return `<span class="${cls}">${pct}%</span> <span class="hint">(${result.trials} samples)</span>`;
+    }
+
     function fmtUsd(n) {
       return n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
     }
@@ -214,16 +244,18 @@
           const changeClass = change > 0 ? 'up' : change < 0 ? 'down' : 'flat';
           const sparkline = (coin.sparkline_in_7d && coin.sparkline_in_7d.price) || [];
           const trend = predictTrend(sparkline.slice(-24));
+          const backtest = backtestSignal(sparkline, 24);
           return `
             <tr>
               <td>${coin.name} <span class="hint">(${coin.symbol.toUpperCase()})</span></td>
               <td class="num">${fmtUsd(coin.current_price)}</td>
               <td class="num ${changeClass}">${change != null ? change.toFixed(2) + '%' : 'n/a'}</td>
               <td class="num">${trendBadge(trend)}</td>
+              <td class="num">${accuracyLabel(backtest)}</td>
             </tr>`;
         }).join('');
       } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="4" class="status error">Couldn't load crypto data: ${err.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" class="status error">Couldn't load crypto data: ${err.message}</td></tr>`;
       }
     }
 
@@ -254,10 +286,12 @@
         if (quote.c === 0 && quote.pc === 0) throw new Error('No data for that symbol');
 
         let trend = null;
+        let backtest = null;
         if (candleRes.ok) {
           const candles = await candleRes.json();
           if (candles.s === 'ok' && Array.isArray(candles.c)) {
-            trend = predictTrend(candles.c);
+            trend = predictTrend(candles.c.slice(-5));
+            backtest = backtestSignal(candles.c, 5);
           }
         }
 
@@ -269,6 +303,7 @@
             <td class="num">${fmtUsd(quote.c)}</td>
             <td class="num ${changeClass}">${change != null ? change.toFixed(2) : 'n/a'}</td>
             <td class="num">${trendBadge(trend)}</td>
+            <td class="num">${accuracyLabel(backtest)}</td>
           </tr>`;
         statusEl.textContent = '';
       } catch (err) {
