@@ -365,6 +365,57 @@
         <button class="ghost" id="refresh-btn">Refresh prices</button>
       </p>
 
+      <h3 style="font-size: 0.95rem; margin: 1.25rem 0 0.75rem;">Options (simulated)</h3>
+      <div class="disclaimer">
+        <strong>Simplified pricing model, not real market prices.</strong>
+        Premiums here come from the <a href="https://en.wikipedia.org/wiki/Black%E2%80%93Scholes_model" target="_blank" rel="noopener">Black-Scholes formula</a>
+        using an assumed volatility (70% for crypto, 35% for stocks) and a
+        0% risk-free rate &mdash; not a real options exchange, which would
+        price contracts from actual supply, demand, and implied
+        volatility. Still fake money, still no real broker, still not
+        investment advice.
+      </div>
+      <div class="row-inline">
+        <select id="option-asset-type">
+          <option value="crypto">Crypto</option>
+          <option value="stock">Stock</option>
+        </select>
+        <input id="option-symbol-input" type="text" placeholder="e.g. bitcoin, or AAPL" autocomplete="off">
+        <select id="option-type">
+          <option value="call">Call</option>
+          <option value="put">Put</option>
+        </select>
+      </div>
+      <div class="row-inline">
+        <input id="option-strike-input" type="number" placeholder="Strike price" min="0" step="any">
+        <input id="option-days-input" type="number" placeholder="Days to expiry" min="1" step="1">
+        <input id="option-quantity-input" type="number" placeholder="Contracts" min="0" step="any">
+        <button id="option-buy-btn">Buy</button>
+      </div>
+      <p class="hint">
+        1 contract = 1 unit of the underlying here (simplified from the
+        standard 100-share equivalent), to keep the numbers easy to
+        follow. Crypto accepts tickers or CoinGecko ids, same as the
+        trade form above; stocks use the same Finnhub key.
+      </p>
+      <p id="option-status" class="status"></p>
+      <table>
+        <thead>
+          <tr>
+            <th>Contract</th>
+            <th>Expires</th>
+            <th class="num">Qty</th>
+            <th class="num">Premium paid</th>
+            <th class="num">Current value</th>
+            <th class="num">P/L</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="options-rows">
+          <tr><td colspan="7" class="status">No option positions yet.</td></tr>
+        </tbody>
+      </table>
+
       <h3 style="font-size: 0.95rem; margin: 1.25rem 0 0.75rem;">Trade history</h3>
       <table>
         <thead>
@@ -385,6 +436,7 @@
 
   <script src="signals.js"></script>
   <script src="portfolio.js"></script>
+  <script src="options.js"></script>
   <script>
     function trendBadge(trend, noHistorySource) {
       if (noHistorySource) return '<span class="flat">add Twelve Data key</span>';
@@ -777,9 +829,13 @@
     function loadPaperState() {
       try {
         const raw = localStorage.getItem(PAPER_STATE_KEY);
-        if (raw) return JSON.parse(raw);
+        if (raw) {
+          const state = JSON.parse(raw);
+          if (!state.options) state.options = []; // older saved state predates options
+          return state;
+        }
       } catch (e) { /* fall through to fresh state */ }
-      return { cash: STARTING_CASH, positions: {}, history: [] };
+      return { cash: STARTING_CASH, positions: {}, history: [], options: [] };
     }
 
     function savePaperState() {
@@ -851,6 +907,27 @@
       return price;
     }
 
+    // --- Options (simulated) pricing --------------------------------
+    // Black-Scholes (options.js) using cached live underlying prices —
+    // an assumed, disclosed volatility per asset class, not real
+    // market-implied volatility, and a 0% risk-free rate.
+    const OPTION_VOLATILITY = { crypto: 0.7, stock: 0.35 };
+    const RISK_FREE_RATE = 0;
+    const MS_PER_YEAR = 365 * 24 * 60 * 60 * 1000;
+
+    function timeRemainingYears(expiresAt) {
+      return Math.max(expiresAt - Date.now(), 0) / MS_PER_YEAR;
+    }
+
+    // Returns the current per-contract value, or null if we don't have
+    // a cached price for the underlying yet.
+    function optionCurrentValue(opt) {
+      const S = paperLivePrices[paperPositionKey(opt.assetType, opt.symbol)];
+      if (S == null) return null;
+      const T = timeRemainingYears(opt.expiresAt);
+      return blackScholesPrice(opt.optionType, S, opt.strike, T, RISK_FREE_RATE, OPTION_VOLATILITY[opt.assetType]);
+    }
+
     function renderPaperBalances() {
       document.getElementById('cash-value').textContent = fmtUsd(paperState.cash);
       let holdingsValue = 0;
@@ -859,7 +936,12 @@
         const price = paperLivePrices[key];
         if (price != null) holdingsValue += price * pos.quantity;
       }
-      document.getElementById('total-value').textContent = fmtUsd(paperState.cash + holdingsValue);
+      let optionsValue = 0;
+      for (const opt of paperState.options) {
+        const value = optionCurrentValue(opt);
+        if (value != null) optionsValue += value * opt.quantity;
+      }
+      document.getElementById('total-value').textContent = fmtUsd(paperState.cash + holdingsValue + optionsValue);
     }
 
     function renderPaperHoldings() {
@@ -898,23 +980,51 @@
       tbody.innerHTML = paperState.history.slice().reverse().map(t => `
         <tr>
           <td>${new Date(t.time).toLocaleString()}</td>
-          <td class="${t.action === 'buy' ? 'up' : 'down'}">${t.action.toUpperCase()}</td>
+          <td class="${t.action.startsWith('buy') ? 'up' : 'down'}">${t.action.toUpperCase()}</td>
           <td>${t.type}:${t.symbol}</td>
           <td class="num">${t.quantity}</td>
           <td class="num">${fmtUsd(t.price)}</td>
         </tr>`).join('');
     }
 
+    function renderOptions() {
+      const tbody = document.getElementById('options-rows');
+      if (paperState.options.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="status">No option positions yet.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = paperState.options.map(opt => {
+        const value = optionCurrentValue(opt);
+        const totalPl = value != null ? (value - opt.premiumPaid) * opt.quantity : null;
+        const plClass = totalPl == null ? 'flat' : totalPl >= 0 ? 'up' : 'down';
+        const daysLeft = Math.max(Math.ceil((opt.expiresAt - Date.now()) / (24 * 60 * 60 * 1000)), 0);
+        const contractLabel = `${opt.symbol.toUpperCase()} $${opt.strike} ${opt.optionType === 'call' ? 'Call' : 'Put'}`;
+        return `
+          <tr>
+            <td>${contractLabel}</td>
+            <td>${daysLeft > 0 ? daysLeft + 'd' : 'Expired'}</td>
+            <td class="num">${opt.quantity}</td>
+            <td class="num">${fmtUsd(opt.premiumPaid)}</td>
+            <td class="num">${value != null ? fmtUsd(value) : 'n/a'}</td>
+            <td class="num ${plClass}">${totalPl != null ? fmtUsd(totalPl) : 'n/a'}</td>
+            <td class="num"><button class="ghost" data-close-option="${opt.id}">Close</button></td>
+          </tr>`;
+      }).join('');
+    }
+
     function renderPaperAll() {
       renderPaperBalances();
       renderPaperHoldings();
+      renderOptions();
       renderPaperHistory();
     }
 
     async function refreshPaperPrices() {
       const key = document.getElementById('finnhub-key').value.trim();
-      const keys = Object.keys(paperState.positions).filter(k => paperState.positions[k].quantity > 0);
-      await Promise.allSettled(keys.map(k => {
+      const positionKeys = Object.keys(paperState.positions).filter(k => paperState.positions[k].quantity > 0);
+      const optionKeys = paperState.options.map(opt => paperPositionKey(opt.assetType, opt.symbol));
+      const allKeys = Array.from(new Set([...positionKeys, ...optionKeys]));
+      await Promise.allSettled(allKeys.map(k => {
         const [type, symbol] = k.split(':');
         return fetchPaperPrice(type, symbol, key);
       }));
@@ -976,11 +1086,112 @@
     document.getElementById('sell-btn').addEventListener('click', () => placePaperTrade('sell'));
     document.getElementById('refresh-btn').addEventListener('click', refreshPaperPrices);
     document.getElementById('reset-btn').addEventListener('click', () => {
-      if (!confirm('Reset your paper portfolio back to $10,000 cash? This clears all holdings and history.')) return;
-      paperState = { cash: STARTING_CASH, positions: {}, history: [] };
+      if (!confirm('Reset your paper portfolio back to $10,000 cash? This clears all holdings, options, and history.')) return;
+      paperState = { cash: STARTING_CASH, positions: {}, history: [], options: [] };
       paperLivePrices = {};
       savePaperState();
       renderPaperAll();
+    });
+
+    function nextOptionId() {
+      return 'opt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    }
+
+    async function placeOptionTrade() {
+      const statusEl = document.getElementById('option-status');
+      const assetType = document.getElementById('option-asset-type').value;
+      const symbolInput = document.getElementById('option-symbol-input').value.trim();
+      const optionType = document.getElementById('option-type').value;
+      const strike = parseFloat(document.getElementById('option-strike-input').value);
+      const days = parseFloat(document.getElementById('option-days-input').value);
+      const quantity = parseFloat(document.getElementById('option-quantity-input').value);
+      const key = document.getElementById('finnhub-key').value.trim();
+
+      if (!symbolInput || !strike || strike <= 0 || !days || days <= 0 || !quantity || quantity <= 0) {
+        statusEl.textContent = 'Enter a symbol, strike, days to expiry, and a positive quantity.';
+        statusEl.className = 'status error';
+        return;
+      }
+
+      statusEl.textContent = 'Fetching live price…';
+      statusEl.className = 'status';
+
+      try {
+        const normSymbol = assetType === 'stock' ? symbolInput.toUpperCase() : symbolInput.toLowerCase();
+        const S = await fetchPaperPrice(assetType, normSymbol, key);
+        const T = days / 365;
+        const premium = blackScholesPrice(optionType, S, strike, T, RISK_FREE_RATE, OPTION_VOLATILITY[assetType]);
+        const totalCost = premium * quantity;
+
+        if (totalCost > paperState.cash) {
+          statusEl.textContent = `Not enough cash: need ${fmtUsd(totalCost)}, have ${fmtUsd(paperState.cash)}.`;
+          statusEl.className = 'status error';
+          return;
+        }
+
+        paperState.options.push({
+          id: nextOptionId(),
+          assetType,
+          symbol: normSymbol,
+          optionType,
+          strike,
+          quantity,
+          premiumPaid: premium,
+          openedAt: Date.now(),
+          expiresAt: Date.now() + days * 24 * 60 * 60 * 1000
+        });
+        paperState.cash -= totalCost;
+        paperState.history.push({
+          time: Date.now(), action: 'buy-option', type: assetType, symbol: normSymbol,
+          quantity, price: premium
+        });
+
+        savePaperState();
+        renderPaperAll();
+        statusEl.textContent = `Bought ${quantity} ${normSymbol} $${strike} ${optionType} at ${fmtUsd(premium)} each.`;
+        statusEl.className = 'status';
+      } catch (err) {
+        statusEl.textContent = "Couldn't place trade: " + err.message;
+        statusEl.className = 'status error';
+      }
+    }
+
+    async function closeOptionPosition(id) {
+      const opt = paperState.options.find(o => o.id === id);
+      if (!opt) return;
+      const statusEl = document.getElementById('option-status');
+      const key = document.getElementById('finnhub-key').value.trim();
+      statusEl.textContent = 'Fetching live price…';
+      statusEl.className = 'status';
+
+      try {
+        const S = await fetchPaperPrice(opt.assetType, opt.symbol, key);
+        const T = timeRemainingYears(opt.expiresAt);
+        const value = blackScholesPrice(opt.optionType, S, opt.strike, T, RISK_FREE_RATE, OPTION_VOLATILITY[opt.assetType]);
+        const proceeds = value * opt.quantity;
+
+        paperState.options = paperState.options.filter(o => o.id !== id);
+        paperState.cash += proceeds;
+        paperState.history.push({
+          time: Date.now(), action: 'sell-option', type: opt.assetType, symbol: opt.symbol,
+          quantity: opt.quantity, price: value
+        });
+
+        savePaperState();
+        renderPaperAll();
+        statusEl.textContent = `Closed ${opt.quantity} ${opt.symbol} $${opt.strike} ${opt.optionType} at ${fmtUsd(value)} each.`;
+        statusEl.className = 'status';
+      } catch (err) {
+        statusEl.textContent = "Couldn't close position: " + err.message;
+        statusEl.className = 'status error';
+      }
+    }
+
+    document.getElementById('option-buy-btn').addEventListener('click', placeOptionTrade);
+    document.getElementById('options-rows').addEventListener('click', e => {
+      const btn = e.target.closest('[data-close-option]');
+      if (!btn) return;
+      closeOptionPosition(btn.dataset.closeOption);
     });
 
     // No free "top movers" feed exists for stocks, so we default the

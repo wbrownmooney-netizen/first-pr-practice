@@ -56,14 +56,16 @@
   <div class="wrap">
     <h1>Signal logic tests</h1>
     <p>Checks <code>predictTrend</code> and <code>backtestSignal</code> from
-      <code>signals.js</code>, and <code>buyPosition</code>/<code>sellPosition</code>
-      from <code>portfolio.js</code>, against known inputs and outputs.</p>
+      <code>signals.js</code>, <code>buyPosition</code>/<code>sellPosition</code>
+      from <code>portfolio.js</code>, and <code>blackScholesPrice</code> from
+      <code>options.js</code>, against known inputs and outputs.</p>
     <p id="summary"></p>
     <ul id="results"></ul>
   </div>
 
   <script src="signals.js"></script>
   <script src="portfolio.js"></script>
+  <script src="options.js"></script>
   <script>
     const tests = [];
     function test(name, fn) { tests.push({ name, fn }); }
@@ -79,6 +81,11 @@
         return;
       }
       throw new Error(`${label}: expected an error to be thrown, but none was`);
+    }
+    function assertApprox(actual, expected, tolerance, label) {
+      if (Math.abs(actual - expected) > tolerance) {
+        throw new Error(`${label}: expected ~${expected} (±${tolerance}), got ${actual}`);
+      }
     }
 
     test('predictTrend: rising prices -> up', () => {
@@ -138,6 +145,26 @@
 
     test('sellPosition: selling with no position throws', () => {
       assertThrows(() => sellPosition(null, 1), 'sell');
+    });
+
+    test('blackScholesPrice: matches known textbook reference values', () => {
+      // S=100, K=100, T=1yr, r=5%, sigma=20% -> call ~10.4506, put ~5.5735
+      assertApprox(blackScholesPrice('call', 100, 100, 1, 0.05, 0.2), 10.4506, 0.001, 'call price');
+      assertApprox(blackScholesPrice('put', 100, 100, 1, 0.05, 0.2), 5.5735, 0.001, 'put price');
+    });
+
+    test('blackScholesPrice: satisfies put-call parity', () => {
+      const S = 100, K = 100, T = 1, r = 0.05, sigma = 0.2;
+      const call = blackScholesPrice('call', S, K, T, r, sigma);
+      const put = blackScholesPrice('put', S, K, T, r, sigma);
+      assertApprox(call - put, S - K * Math.exp(-r * T), 0.0001, 'parity');
+    });
+
+    test('blackScholesPrice: at expiration returns exact intrinsic value', () => {
+      assertEqual(blackScholesPrice('call', 120, 100, 0, 0, 0.5), 20, 'call intrinsic');
+      assertEqual(blackScholesPrice('put', 80, 100, 0, 0, 0.5), 20, 'put intrinsic');
+      assertEqual(blackScholesPrice('call', 90, 100, 0, 0, 0.5), 0, 'OTM call intrinsic');
+      assertEqual(blackScholesPrice('put', 110, 100, 0, 0, 0.5), 0, 'OTM put intrinsic');
     });
 
     const resultsEl = document.getElementById('results');
