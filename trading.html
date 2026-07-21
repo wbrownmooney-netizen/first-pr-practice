@@ -101,6 +101,15 @@
   }
   button:hover { background: var(--accent-hover); }
   button:disabled { opacity: 0.5; cursor: default; }
+  .filter-group { display: flex; gap: 0.4rem; margin-bottom: 0.9rem; }
+  .filter-btn {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    padding: 0.35rem 0.8rem;
+    font-size: 0.8rem;
+  }
+  .filter-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
   .hint { color: var(--muted); font-size: 0.78rem; margin: 0.4rem 0 0; }
   .hint a { color: var(--accent); }
   .status { font-size: 0.85rem; color: var(--muted); margin-top: 0.5rem; }
@@ -138,12 +147,20 @@
           near 50% means "no better than a coin flip." Higher doesn't mean
           reliable going forward &mdash; it's a small, recent sample.</li>
       </ul>
-      <p class="hint">Nothing here tells you what to buy or sell &mdash; it's meant for
-        learning how these signals behave, not for making real decisions.</p>
+      <p class="hint">Use the <strong>Trending up</strong> / <strong>Trending down</strong>
+        buttons above each table to filter the list down to whatever's
+        currently leaning that direction. Nothing here tells you what to
+        buy or sell &mdash; it's meant for learning how these signals
+        behave, not for making real decisions.</p>
     </section>
 
     <section id="crypto-section">
       <h2>Crypto (live, via CoinGecko)</h2>
+      <div class="filter-group" id="crypto-filter" role="group" aria-label="Filter by trend">
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="up">Trending up</button>
+        <button class="filter-btn" data-filter="down">Trending down</button>
+      </div>
       <table>
         <thead>
           <tr>
@@ -170,8 +187,13 @@
       </ol>
       <div class="row-inline">
         <input id="finnhub-key" type="password" placeholder="Your free Finnhub API key" autocomplete="off">
-        <input id="stock-symbol" type="text" placeholder="Symbol, e.g. AAPL" autocomplete="off" style="max-width: 140px;">
-        <button id="stock-fetch">Get quote</button>
+        <input id="stock-symbol" type="text" placeholder="Symbols, e.g. AAPL, TSLA, MSFT" autocomplete="off">
+        <button id="stock-fetch">Scan watchlist</button>
+      </div>
+      <div class="filter-group" id="stock-filter" role="group" aria-label="Filter by trend">
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="up">Trending up</button>
+        <button class="filter-btn" data-filter="down">Trending down</button>
       </div>
       <table>
         <thead>
@@ -184,7 +206,7 @@
           </tr>
         </thead>
         <tbody id="stock-rows">
-          <tr><td colspan="5" class="status">Enter a key and symbol above.</td></tr>
+          <tr><td colspan="5" class="status">Enter a key and one or more symbols above.</td></tr>
         </tbody>
       </table>
       <p id="stock-status" class="status"></p>
@@ -214,94 +236,148 @@
       return n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
     }
 
+    // Wires up a set of .filter-btn elements to re-render rows with the
+    // active trend filter (all / up / down) applied.
+    function setupFilter(groupId, render) {
+      const group = document.getElementById(groupId);
+      group.addEventListener('click', e => {
+        const btn = e.target.closest('.filter-btn');
+        if (!btn) return;
+        group.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        render(btn.dataset.filter);
+      });
+    }
+
+    function rowHtml(name, price, change, trend, backtest) {
+      const changeClass = change > 0 ? 'up' : change < 0 ? 'down' : 'flat';
+      return `
+        <tr>
+          <td>${name}</td>
+          <td class="num">${fmtUsd(price)}</td>
+          <td class="num ${changeClass}">${change != null ? change.toFixed(2) + '%' : 'n/a'}</td>
+          <td class="num">${trendBadge(trend)}</td>
+          <td class="num">${accuracyLabel(backtest)}</td>
+        </tr>`;
+    }
+
+    let cryptoData = [];
+
+    function renderCrypto(filter) {
+      const tbody = document.getElementById('crypto-rows');
+      const rows = cryptoData.filter(c => filter === 'all' || c.trend === filter);
+      if (rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="status">Nothing currently trending ${filter}.</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = rows.map(c =>
+        rowHtml(`${c.coin.name} <span class="hint">(${c.coin.symbol.toUpperCase()})</span>`,
+          c.coin.current_price, c.coin.price_change_percentage_24h, c.trend, c.backtest)
+      ).join('');
+    }
+
     async function loadCrypto() {
       const tbody = document.getElementById('crypto-rows');
       try {
         const res = await fetch(
-          'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=8&page=1&sparkline=true'
+          'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=20&page=1&sparkline=true'
         );
         if (!res.ok) throw new Error('CoinGecko request failed: ' + res.status);
         const coins = await res.json();
-        tbody.innerHTML = coins.map(coin => {
-          const change = coin.price_change_percentage_24h;
-          const changeClass = change > 0 ? 'up' : change < 0 ? 'down' : 'flat';
+        cryptoData = coins.map(coin => {
           const sparkline = (coin.sparkline_in_7d && coin.sparkline_in_7d.price) || [];
-          const trend = predictTrend(sparkline.slice(-24));
-          const backtest = backtestSignal(sparkline, 24);
-          return `
-            <tr>
-              <td>${coin.name} <span class="hint">(${coin.symbol.toUpperCase()})</span></td>
-              <td class="num">${fmtUsd(coin.current_price)}</td>
-              <td class="num ${changeClass}">${change != null ? change.toFixed(2) + '%' : 'n/a'}</td>
-              <td class="num">${trendBadge(trend)}</td>
-              <td class="num">${accuracyLabel(backtest)}</td>
-            </tr>`;
-        }).join('');
+          return {
+            coin,
+            trend: predictTrend(sparkline.slice(-24)),
+            backtest: backtestSignal(sparkline, 24)
+          };
+        });
+        const activeFilter = document.querySelector('#crypto-filter .filter-btn.active').dataset.filter;
+        renderCrypto(activeFilter);
       } catch (err) {
         tbody.innerHTML = `<tr><td colspan="5" class="status error">Couldn't load crypto data: ${err.message}</td></tr>`;
       }
     }
 
-    async function fetchStock() {
+    let stockData = [];
+
+    function renderStocks(filter) {
+      const tbody = document.getElementById('stock-rows');
+      const rows = stockData.filter(s => filter === 'all' || s.trend === filter);
+      if (rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="status">Nothing currently trending ${filter}.</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = rows.map(s =>
+        rowHtml(s.symbol, s.price, s.change, s.trend, s.backtest)
+      ).join('');
+    }
+
+    async function fetchOneStock(symbol, key) {
+      const [quoteRes, candleRes] = await Promise.all([
+        fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${key}`),
+        fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${symbol}&resolution=D&count=14&token=${key}`)
+      ]);
+      if (!quoteRes.ok) throw new Error('Quote request failed: ' + quoteRes.status);
+      const quote = await quoteRes.json();
+      if (quote.c === 0 && quote.pc === 0) throw new Error('No data for that symbol');
+
+      let trend = null;
+      let backtest = null;
+      if (candleRes.ok) {
+        const candles = await candleRes.json();
+        if (candles.s === 'ok' && Array.isArray(candles.c)) {
+          trend = predictTrend(candles.c.slice(-5));
+          backtest = backtestSignal(candles.c, 5);
+        }
+      }
+      return { symbol, price: quote.c, change: quote.d, trend, backtest };
+    }
+
+    async function fetchStocks() {
       const keyInput = document.getElementById('finnhub-key');
       const symbolInput = document.getElementById('stock-symbol');
       const statusEl = document.getElementById('stock-status');
-      const tbody = document.getElementById('stock-rows');
 
       const key = keyInput.value.trim();
-      const symbol = symbolInput.value.trim().toUpperCase();
-      if (!key || !symbol) {
-        statusEl.textContent = 'Enter both an API key and a symbol.';
+      const symbols = symbolInput.value.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+      if (!key || symbols.length === 0) {
+        statusEl.textContent = 'Enter both an API key and at least one symbol.';
         statusEl.className = 'status error';
         return;
       }
       localStorage.setItem('finnhubKey', key);
+      localStorage.setItem('stockWatchlist', symbols.join(','));
       statusEl.textContent = 'Loading…';
       statusEl.className = 'status';
 
-      try {
-        const [quoteRes, candleRes] = await Promise.all([
-          fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${key}`),
-          fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${symbol}&resolution=D&count=14&token=${key}`)
-        ]);
-        if (!quoteRes.ok) throw new Error('Quote request failed: ' + quoteRes.status);
-        const quote = await quoteRes.json();
-        if (quote.c === 0 && quote.pc === 0) throw new Error('No data for that symbol');
+      const results = await Promise.allSettled(symbols.map(s => fetchOneStock(s, key)));
+      stockData = results.filter(r => r.status === 'fulfilled').map(r => r.value);
+      const failed = results
+        .map((r, i) => ({ r, symbol: symbols[i] }))
+        .filter(x => x.r.status === 'rejected');
 
-        let trend = null;
-        let backtest = null;
-        if (candleRes.ok) {
-          const candles = await candleRes.json();
-          if (candles.s === 'ok' && Array.isArray(candles.c)) {
-            trend = predictTrend(candles.c.slice(-5));
-            backtest = backtestSignal(candles.c, 5);
-          }
-        }
+      const activeFilter = document.querySelector('#stock-filter .filter-btn.active').dataset.filter;
+      renderStocks(activeFilter);
 
-        const change = quote.d;
-        const changeClass = change > 0 ? 'up' : change < 0 ? 'down' : 'flat';
-        tbody.innerHTML = `
-          <tr>
-            <td>${symbol}</td>
-            <td class="num">${fmtUsd(quote.c)}</td>
-            <td class="num ${changeClass}">${change != null ? change.toFixed(2) : 'n/a'}</td>
-            <td class="num">${trendBadge(trend)}</td>
-            <td class="num">${accuracyLabel(backtest)}</td>
-          </tr>`;
-        statusEl.textContent = '';
-      } catch (err) {
-        statusEl.textContent = "Couldn't load stock data: " + err.message;
-        statusEl.className = 'status error';
-      }
+      statusEl.textContent = failed.length
+        ? `Couldn't load: ${failed.map(f => `${f.symbol} (${f.r.reason.message})`).join(', ')}`
+        : '';
+      statusEl.className = failed.length ? 'status error' : 'status';
     }
 
-    document.getElementById('stock-fetch').addEventListener('click', fetchStock);
+    document.getElementById('stock-fetch').addEventListener('click', fetchStocks);
     document.getElementById('stock-symbol').addEventListener('keydown', e => {
-      if (e.key === 'Enter') fetchStock();
+      if (e.key === 'Enter') fetchStocks();
     });
+
+    setupFilter('crypto-filter', renderCrypto);
+    setupFilter('stock-filter', renderStocks);
 
     const savedKey = localStorage.getItem('finnhubKey');
     if (savedKey) document.getElementById('finnhub-key').value = savedKey;
+    const savedWatchlist = localStorage.getItem('stockWatchlist');
+    if (savedWatchlist) document.getElementById('stock-symbol').value = savedWatchlist;
 
     loadCrypto();
   </script>
