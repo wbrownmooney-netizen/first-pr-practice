@@ -54,6 +54,24 @@ The trend/accuracy logic lives in `signals.js`, shared by the page and by
 shows pass/fail results in the browser — open it directly to run the
 tests, no build step or test runner needed.
 
+## Paper trading simulator
+
+`paper.html` is a broker-free, fake-money trading simulator. It starts you
+with $10,000 in simulated cash and lets you "buy" and "sell" crypto or
+stocks at real live prices (crypto via CoinGecko, stocks via your Finnhub
+key), tracking your simulated holdings, cost basis, and unrealized profit
+or loss. Everything is stored locally in your browser — **no real broker,
+no real money, ever.**
+
+Crypto trades use [CoinGecko IDs](https://www.coingecko.com/en/all-cryptocurrencies)
+(e.g. `bitcoin`, not `BTC`); stock trades reuse the same Finnhub API key as
+the dashboard. A "Reset" button clears your simulated portfolio back to
+$10,000 whenever you want a clean start.
+
+This exists instead of a real broker connection: we deliberately don't
+place real trades or handle real account credentials — see the trade
+history and holdings table for a realistic feel without any of the risk.
+
 ## Getting started
 
 1. Clone the repo: `git clone https://github.com/wbrownmooney-netizen/first-pr-practice.git`
