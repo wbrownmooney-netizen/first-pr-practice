@@ -334,9 +334,10 @@
         <button id="sell-btn" class="sell">Sell</button>
       </div>
       <p class="hint">
-        Crypto symbols are <a href="https://www.coingecko.com/en/all-cryptocurrencies" target="_blank" rel="noopener">CoinGecko IDs</a>
-        (e.g. <code>bitcoin</code>, <code>ethereum</code>, <code>solana</code>), not tickers.
-        Stocks use the same Finnhub key entered in the Stocks section above.
+        Crypto accepts <a href="https://www.coingecko.com/en/all-cryptocurrencies" target="_blank" rel="noopener">CoinGecko IDs</a>
+        (e.g. <code>bitcoin</code>) or common tickers (e.g. <code>btc</code>) &mdash;
+        tickers are looked up automatically. Stocks use the same Finnhub
+        key entered in the Stocks section above.
       </p>
       <p id="trade-status" class="status"></p>
 
@@ -769,12 +770,46 @@
       return `${type}:${symbol}`;
     }
 
-    async function fetchPaperCryptoPrice(id) {
+    async function fetchCoinGeckoPrice(id) {
       const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(id)}&vs_currencies=usd`);
       if (!res.ok) throw new Error('CoinGecko request failed: ' + res.status);
       const data = await res.json();
-      if (!data[id]) throw new Error(`Unknown CoinGecko id "${id}"`);
-      return data[id].usd;
+      return data[id] ? data[id].usd : null;
+    }
+
+    // Resolves a ticker (e.g. "btc") to its CoinGecko id (e.g. "bitcoin")
+    // via CoinGecko's search endpoint, taking the first result whose
+    // symbol matches exactly (case-insensitive). Returns null if nothing
+    // matches, rather than guessing at a loosely-related coin. Cached in
+    // memory per session so refreshing prices repeatedly for the same
+    // ticker doesn't re-search every time.
+    const tickerIdCache = {};
+
+    async function resolveCoinGeckoId(ticker) {
+      if (ticker in tickerIdCache) return tickerIdCache[ticker];
+      const res = await fetch(`https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(ticker)}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      const match = (data.coins || []).find(c => c.symbol && c.symbol.toLowerCase() === ticker);
+      tickerIdCache[ticker] = match ? match.id : null;
+      return tickerIdCache[ticker];
+    }
+
+    // Accepts either a real CoinGecko id ("bitcoin") or a common ticker
+    // ("btc") — tries the input directly first (the common, fast-path
+    // case for anyone who already knows the right id), and only falls
+    // back to ticker resolution if that comes back empty.
+    async function fetchPaperCryptoPrice(input) {
+      let price = await fetchCoinGeckoPrice(input);
+      if (price != null) return price;
+
+      const resolvedId = await resolveCoinGeckoId(input);
+      if (resolvedId) {
+        price = await fetchCoinGeckoPrice(resolvedId);
+        if (price != null) return price;
+      }
+
+      throw new Error(`Unknown CoinGecko id or ticker "${input}"`);
     }
 
     async function fetchPaperStockPrice(symbol, key) {
