@@ -430,6 +430,18 @@
       return { symbol, price: quote.c, change: quote.d, trend, backtest };
     }
 
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    // Finnhub's free tier rate-limits by requests per second, not just
+    // per minute — firing every symbol's requests at once (as
+    // Promise.all/allSettled would) triggers 429s well before the
+    // watchlist finishes. Fetching one symbol at a time with a short
+    // gap between them, and rendering as results arrive, stays under
+    // that limit and gives faster visible feedback besides.
+    const STOCK_FETCH_DELAY_MS = 350;
+
     async function fetchStocks() {
       const keyInput = document.getElementById('finnhub-key');
       const symbolInput = document.getElementById('stock-symbol');
@@ -444,23 +456,30 @@
       }
       localStorage.setItem('finnhubKey', key);
       localStorage.setItem('stockWatchlist', symbols.join(','));
-      statusEl.textContent = 'Loading…';
-      statusEl.className = 'status';
 
-      const results = await Promise.allSettled(symbols.map(s => fetchOneStock(s, key)));
-      stockData = results.filter(r => r.status === 'fulfilled').map(r => r.value);
-      const failed = results
-        .map((r, i) => ({ r, symbol: symbols[i] }))
-        .filter(x => x.r.status === 'rejected');
+      stockData = [];
+      const failed = [];
+      const activeFilter = () => document.querySelector('#stock-filter .filter-btn.active').dataset.filter;
 
+      for (let i = 0; i < symbols.length; i++) {
+        statusEl.textContent = `Loading… (${i + 1}/${symbols.length})`;
+        statusEl.className = 'status';
+        try {
+          stockData.push(await fetchOneStock(symbols[i], key));
+          renderStocks(activeFilter());
+        } catch (err) {
+          failed.push({ symbol: symbols[i], error: err });
+        }
+        if (i < symbols.length - 1) await sleep(STOCK_FETCH_DELAY_MS);
+      }
+
+      renderStocks(activeFilter());
       checkTrendChanges('stock', stockData.map(s => ({
         key: s.symbol, label: s.symbol, trend: s.trend
       })));
-      const activeFilter = document.querySelector('#stock-filter .filter-btn.active').dataset.filter;
-      renderStocks(activeFilter);
 
       statusEl.textContent = failed.length
-        ? `Couldn't load: ${failed.map(f => `${f.symbol} (${f.r.reason.message})`).join(', ')}`
+        ? `Couldn't load: ${failed.map(f => `${f.symbol} (${f.error.message})`).join(', ')}`
         : '';
       statusEl.className = failed.length ? 'status error' : 'status';
     }
