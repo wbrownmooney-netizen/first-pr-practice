@@ -88,17 +88,20 @@ tests, no build step or test runner needed.
 
 ## Paper trading simulator
 
-`paper.html` is a broker-free, fake-money trading simulator. It starts you
-with $10,000 in simulated cash and lets you "buy" and "sell" crypto or
-stocks at real live prices (crypto via CoinGecko, stocks via your Finnhub
-key), tracking your simulated holdings, cost basis, and unrealized profit
-or loss. Everything is stored locally in your browser — **no real broker,
-no real money, ever.**
+The **Paper Trading Simulator** is a section further down `trading.html`
+(jump to it via the "Paper trading simulator" link in the header) — a
+broker-free, fake-money trading simulator living on the same page as the
+dashboard, rather than a separate file. It starts you with $10,000 in
+simulated cash and lets you "buy" and "sell" crypto or stocks at real
+live prices (crypto via CoinGecko, stocks via the same Finnhub key used
+above), tracking your simulated holdings, cost basis, and unrealized
+profit or loss. Everything is stored locally in your browser — **no real
+broker, no real money, ever.**
 
 Crypto trades use [CoinGecko IDs](https://www.coingecko.com/en/all-cryptocurrencies)
-(e.g. `bitcoin`, not `BTC`); stock trades reuse the same Finnhub API key as
-the dashboard. A "Reset" button clears your simulated portfolio back to
-$10,000 whenever you want a clean start.
+(e.g. `bitcoin`, not `BTC`); stock trades reuse the same Finnhub API key
+field from the Stocks section above it. A "Reset" button clears your
+simulated portfolio back to $10,000 whenever you want a clean start.
 
 This exists instead of a real broker connection: we deliberately don't
 place real trades or handle real account credentials — see the trade
