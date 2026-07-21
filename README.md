@@ -130,6 +130,32 @@ shared by the page and by `test.html`, which now also covers it: opening a
 position, weighted-average cost across uneven buy sizes, partial sells,
 and selling more than you hold (which should fail).
 
+### Options (simulated)
+
+Within the Paper Trading Simulator, an **Options** section lets you buy
+simulated call and put contracts on any crypto or stock symbol the rest
+of the page can price. Since there's no free options market data
+anywhere (Finnhub, Twelve Data, and CoinGecko's free tiers all lack it),
+premiums are computed with the standard
+[Black-Scholes formula](https://en.wikipedia.org/wiki/Black%E2%80%93Scholes_model)
+using the live underlying price, your chosen strike and days-to-expiry,
+a fixed assumed volatility (70% for crypto, 35% for stocks), and a 0%
+risk-free rate. **This is a simplified educational model, not real
+market pricing** — a real options exchange would price the same contract
+differently, reflecting actual supply, demand, and implied volatility.
+One contract = one unit of the underlying here (not the standard
+100-share equivalent), to keep the numbers easy to follow.
+
+A "Close" button on each open position sells it back at its
+current model price (or, past expiration, its exact intrinsic value —
+the formula converges to that automatically as time-to-expiry hits
+zero), crediting the proceeds to your simulated cash balance.
+
+The pricing math (`blackScholesPrice`, plus the normal-distribution
+helper it depends on) lives in `options.js`, tested in `test.html`
+against known textbook reference values, put-call parity, and exact
+intrinsic value at expiration.
+
 ## Getting started
 
 1. Clone the repo: `git clone https://github.com/wbrownmooney-netizen/first-pr-practice.git`
