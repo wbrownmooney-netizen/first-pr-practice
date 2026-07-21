@@ -106,9 +106,12 @@ above), tracking your simulated holdings, cost basis, and unrealized
 profit or loss. Everything is stored locally in your browser — **no real
 broker, no real money, ever.**
 
-Crypto trades use [CoinGecko IDs](https://www.coingecko.com/en/all-cryptocurrencies)
-(e.g. `bitcoin`, not `BTC`); stock trades reuse the same Finnhub API key
-field from the Stocks section above it. A "Reset" button clears your
+Crypto trades accept [CoinGecko IDs](https://www.coingecko.com/en/all-cryptocurrencies)
+(e.g. `bitcoin`) or common tickers (e.g. `btc`) — a ticker that isn't
+itself a valid CoinGecko id is automatically resolved via CoinGecko's
+search API (first exact symbol match, cached in memory so it isn't
+re-looked-up on every price refresh); stock trades reuse the same
+Finnhub API key field from the Stocks section above it. A "Reset" button clears your
 simulated portfolio back to $10,000 whenever you want a clean start.
 
 This exists instead of a real broker connection: we deliberately don't
