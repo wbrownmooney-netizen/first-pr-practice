@@ -78,6 +78,11 @@ This exists instead of a real broker connection: we deliberately don't
 place real trades or handle real account credentials — see the trade
 history and holdings table for a realistic feel without any of the risk.
 
+The cost-basis math (`buyPosition`/`sellPosition`) lives in `portfolio.js`,
+shared by the page and by `test.html`, which now also covers it: opening a
+position, weighted-average cost across uneven buy sizes, partial sells,
+and selling more than you hold (which should fail).
+
 ## Getting started
 
 1. Clone the repo: `git clone https://github.com/wbrownmooney-netizen/first-pr-practice.git`

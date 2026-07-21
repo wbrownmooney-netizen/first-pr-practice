@@ -56,12 +56,14 @@
   <div class="wrap">
     <h1>Signal logic tests</h1>
     <p>Checks <code>predictTrend</code> and <code>backtestSignal</code> from
-      <code>signals.js</code> against known inputs and outputs.</p>
+      <code>signals.js</code>, and <code>buyPosition</code>/<code>sellPosition</code>
+      from <code>portfolio.js</code>, against known inputs and outputs.</p>
     <p id="summary"></p>
     <ul id="results"></ul>
   </div>
 
   <script src="signals.js"></script>
+  <script src="portfolio.js"></script>
   <script>
     const tests = [];
     function test(name, fn) { tests.push({ name, fn }); }
@@ -69,6 +71,14 @@
       const a = JSON.stringify(actual);
       const e = JSON.stringify(expected);
       if (a !== e) throw new Error(`${label}: expected ${e}, got ${a}`);
+    }
+    function assertThrows(fn, label) {
+      try {
+        fn();
+      } catch (e) {
+        return;
+      }
+      throw new Error(`${label}: expected an error to be thrown, but none was`);
     }
 
     test('predictTrend: rising prices -> up', () => {
@@ -99,6 +109,35 @@
 
     test('backtestSignal: window bigger than data -> null', () => {
       assertEqual(backtestSignal([1, 2, 3], 5), null, 'backtest');
+    });
+
+    test('buyPosition: opening a new position sets avg cost to the trade price', () => {
+      assertEqual(buyPosition(null, 1, 100), { quantity: 1, avgCost: 100 }, 'position');
+    });
+
+    test('buyPosition: adding to a position recalculates weighted-average cost', () => {
+      const opened = buyPosition(null, 1, 100);
+      assertEqual(buyPosition(opened, 1, 200), { quantity: 2, avgCost: 150 }, 'position');
+    });
+
+    test('buyPosition: unequal quantities weight the average correctly', () => {
+      // 1 @ 100 then 3 @ 200 -> (100*1 + 200*3) / 4 = 175
+      const opened = buyPosition(null, 1, 100);
+      assertEqual(buyPosition(opened, 3, 200), { quantity: 4, avgCost: 175 }, 'position');
+    });
+
+    test('sellPosition: partial sell reduces quantity, keeps avg cost', () => {
+      const held = { quantity: 2, avgCost: 150 };
+      assertEqual(sellPosition(held, 1), { quantity: 1, avgCost: 150 }, 'position');
+    });
+
+    test('sellPosition: selling more than held throws', () => {
+      const held = { quantity: 1, avgCost: 150 };
+      assertThrows(() => sellPosition(held, 5), 'sell');
+    });
+
+    test('sellPosition: selling with no position throws', () => {
+      assertThrows(() => sellPosition(null, 1), 'sell');
     });
 
     const resultsEl = document.getElementById('results');
