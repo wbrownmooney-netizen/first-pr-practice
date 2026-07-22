@@ -23,6 +23,8 @@
     --alert-bg-strong: rgba(37, 99, 235, 0.28);
     --danger: #dc2626;
     --danger-hover: #b91c1c;
+    --mover-bg: rgba(245, 158, 11, 0.12);
+    --mover-accent: #d97706;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -42,6 +44,8 @@
       --alert-bg-strong: rgba(59, 130, 246, 0.36);
       --danger: #f87171;
       --danger-hover: #fca5a5;
+      --mover-bg: rgba(245, 158, 11, 0.18);
+      --mover-accent: #f59e0b;
     }
   }
   * { box-sizing: border-box; }
@@ -90,9 +94,22 @@
     0%, 100% { background: var(--alert-bg); }
     50% { background: var(--alert-bg-strong); }
   }
+  tr.mover-row { background: var(--mover-bg); }
   .held-badge {
     display: inline-block;
     background: var(--accent);
+    color: white;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    margin-right: 0.35rem;
+    vertical-align: middle;
+  }
+  .mover-badge {
+    display: inline-block;
+    background: var(--mover-accent);
     color: white;
     font-size: 0.62rem;
     font-weight: 700;
@@ -192,17 +209,44 @@
       <h2>Live trend alerts</h2>
       <p class="hint" style="margin-top:0;">
         Get a browser notification whenever a coin or watchlist stock's
-        trend flips to up or down, or a new headline shows up in the
-        News section below. This only works while this tab stays open
-        in your browser &mdash; there's no server behind this page, so
-        it can't notify you after you close it. A trend alert also gets
-        its row highlighted in the table below for a couple of minutes,
+        trend flips to up or down, a symbol becomes a potential mover
+        (see below), or a new headline shows up in the News section
+        further down. This only works while this tab stays open in your
+        browser &mdash; there's no server behind this page, so it can't
+        notify you after you close it. A trend or mover alert also gets
+        its row highlighted in the tables below for a couple of minutes,
         so it's easy to spot at a glance.
       </p>
       <div class="row-inline">
         <button id="alerts-toggle">Enable live alerts</button>
         <span id="alerts-status" class="status"></span>
       </div>
+    </section>
+
+    <section id="movers-section">
+      <h2>Potential Movers</h2>
+      <p class="hint" style="margin-top:0;">
+        Coins or watchlist stocks currently near their recent low
+        (within 10% for crypto, 5% for stocks) <em>with</em> an upward
+        trend signal &mdash; a naive "possible bounce" heuristic
+        combining two already-naive signals from below. Most beaten-down
+        assets stay beaten down; this is not a prediction of a reversal,
+        and definitely not investment advice. Stocks only show up here
+        with a Twelve Data key entered (needed for their price history).
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th class="num">Price</th>
+            <th class="num">Above recent low</th>
+            <th class="num">Trend</th>
+          </tr>
+        </thead>
+        <tbody id="movers-rows">
+          <tr><td colspan="4" class="status">Loading&hellip;</td></tr>
+        </tbody>
+      </table>
     </section>
 
     <section id="explainer-section">
@@ -512,6 +556,21 @@
       return `<span class="${cls}">${pct}%</span> <span class="hint">(${result.trials} tries, ${plain})</span>`;
     }
 
+    // How close counts as "near the low," per asset class — arbitrary,
+    // disclosed thresholds, not a technical-analysis standard. Crypto
+    // gets a wider band since it's more volatile.
+    const NEAR_LOW_THRESHOLD = { crypto: 10, stock: 5 };
+
+    // Companion to signals.js's isNearLow, for display: how far above
+    // the recent low the current price actually sits.
+    function pctAboveLow(prices) {
+      if (!prices || prices.length < 2) return null;
+      const low = Math.min(...prices);
+      if (low <= 0) return null;
+      const current = prices[prices.length - 1];
+      return ((current - low) / low) * 100;
+    }
+
     function fmtUsd(n) {
       return n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
     }
@@ -557,11 +616,18 @@
       return held ? '<span class="held-badge" title="You hold this in your paper portfolio">HELD</span>' : '';
     }
 
-    function rowHtml(name, price, change, trend, backtest, restricted, highlighted, held) {
+    function moverBadge(isMover) {
+      return isMover
+        ? '<span class="mover-badge" title="Near its recent low, with an upward trend signal">MOVER</span>'
+        : '';
+    }
+
+    function rowHtml(name, price, change, trend, backtest, restricted, highlighted, held, isMover) {
       const changeClass = change > 0 ? 'up' : change < 0 ? 'down' : 'flat';
+      const rowClasses = [highlighted ? 'alert-highlight' : '', isMover ? 'mover-row' : ''].filter(Boolean).join(' ');
       return `
-        <tr class="${highlighted ? 'alert-highlight' : ''}">
-          <td>${heldBadge(held)}${name}</td>
+        <tr class="${rowClasses}">
+          <td>${heldBadge(held)}${moverBadge(isMover)}${name}</td>
           <td class="num">${fmtUsd(price)}</td>
           <td class="num ${changeClass}">${change != null ? change.toFixed(2) + '%' : 'n/a'}</td>
           <td class="num">${trendBadge(trend, restricted)}</td>
@@ -606,6 +672,29 @@
           recentAlerts.set(compositeKey, Date.now());
         }
         previousTrends[compositeKey] = trend;
+      }
+    }
+
+    // Same shape as checkTrendChanges, but for the "potential mover"
+    // flag (near its recent low + trend signal up). Only fires on a
+    // false->true transition, seeded silently on the first check per
+    // symbol so enabling alerts doesn't fire once for every existing
+    // mover. Reuses `recentAlerts` (the same row-highlight mechanism
+    // trend alerts use), so a new mover's row pulses too.
+    const previousMoverState = {};
+
+    function checkMoverChanges(type, items) {
+      for (const { key, label, isMover, held } of items) {
+        const compositeKey = `${type}:${key}`;
+        const prev = previousMoverState[compositeKey];
+        if (alertsEnabled && prev === false && isMover === true) {
+          const body = held
+            ? 'You hold this in your paper portfolio — near its recent low with an upward trend signal, not investment advice.'
+            : 'Near its recent low with an upward trend signal — not investment advice.';
+          notify(`${label} may be turning up from a low`, body);
+          recentAlerts.set(compositeKey, Date.now());
+        }
+        previousMoverState[compositeKey] = isMover;
       }
     }
 
@@ -662,7 +751,7 @@
       tbody.innerHTML = rows.map(c =>
         rowHtml(`${c.coin.name} <span class="hint">(${c.coin.symbol.toUpperCase()})</span>`,
           c.coin.current_price, c.coin.price_change_percentage_24h, c.trend, c.backtest,
-          false, isRecentlyAlerted(`crypto:${c.coin.id}`), held.cryptoIds.has(c.coin.id))
+          false, isRecentlyAlerted(`crypto:${c.coin.id}`), held.cryptoIds.has(c.coin.id), c.isMover)
       ).join('');
     }
 
@@ -1005,17 +1094,24 @@
 
         cryptoData = coins.map(coin => {
           const sparkline = (coin.sparkline_in_7d && coin.sparkline_in_7d.price) || [];
+          const trend = predictTrend(sparkline.slice(-24));
+          const nearLow = isNearLow(sparkline, NEAR_LOW_THRESHOLD.crypto);
           return {
             coin,
-            trend: predictTrend(sparkline.slice(-24)),
-            backtest: backtestSignal(sparkline, 24)
+            trend,
+            backtest: backtestSignal(sparkline, 24),
+            isMover: nearLow && trend === 'up',
+            pctAboveLow: pctAboveLow(sparkline)
           };
         });
-        checkTrendChanges('crypto', cryptoData.map(c => ({
-          key: c.coin.id, label: c.coin.name, trend: c.trend, held: held.cryptoIds.has(c.coin.id)
-        })));
+        const cryptoAlertItems = cryptoData.map(c => ({
+          key: c.coin.id, label: c.coin.name, trend: c.trend, isMover: c.isMover, held: held.cryptoIds.has(c.coin.id)
+        }));
+        checkTrendChanges('crypto', cryptoAlertItems);
+        checkMoverChanges('crypto', cryptoAlertItems);
         const activeFilter = document.querySelector('#crypto-filter .filter-btn.active').dataset.filter;
         renderCrypto(activeFilter);
+        renderMovers();
       } catch (err) {
         tbody.innerHTML = `<tr><td colspan="5" class="status error">Couldn't load crypto data: ${err.message}</td></tr>`;
       }
@@ -1033,8 +1129,34 @@
       const held = getHeldPositions();
       tbody.innerHTML = rows.map(s =>
         rowHtml(s.symbol, s.price, s.change, s.trend, s.backtest,
-          s.noHistorySource, isRecentlyAlerted(`stock:${s.symbol}`), held.stockSymbols.has(s.symbol))
+          s.noHistorySource, isRecentlyAlerted(`stock:${s.symbol}`), held.stockSymbols.has(s.symbol), s.isMover)
       ).join('');
+    }
+
+    // Pulls current movers out of whichever of cryptoData/stockData have
+    // loaded so far — safe to call after either finishes independently,
+    // since both start as empty arrays.
+    function renderMovers() {
+      const tbody = document.getElementById('movers-rows');
+      const cryptoMovers = cryptoData.filter(c => c.isMover).map(c => ({
+        label: `${c.coin.name} (${c.coin.symbol.toUpperCase()})`,
+        price: c.coin.current_price, pct: c.pctAboveLow, trend: c.trend
+      }));
+      const stockMovers = stockData.filter(s => s.isMover).map(s => ({
+        label: s.symbol, price: s.price, pct: s.pctAboveLow, trend: s.trend
+      }));
+      const movers = [...cryptoMovers, ...stockMovers];
+      if (movers.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="status">No potential movers right now.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = movers.map(m => `
+        <tr>
+          <td>${escapeHtml(m.label)}</td>
+          <td class="num">${fmtUsd(m.price)}</td>
+          <td class="num">${m.pct != null ? m.pct.toFixed(1) + '%' : 'n/a'}</td>
+          <td class="num">${trendBadge(m.trend)}</td>
+        </tr>`).join('');
     }
 
     function sleep(ms) {
@@ -1072,6 +1194,8 @@
 
       let trend = null;
       let backtest = null;
+      let isMover = false;
+      let pctFromLow = null;
       if (twelveDataKey) {
         const seriesRes = await fetchWithRetry(
           `https://api.twelvedata.com/time_series?symbol=${symbol}&interval=1day&outputsize=90&apikey=${twelveDataKey}`
@@ -1084,13 +1208,18 @@
             const closes = series.values.map(v => parseFloat(v.close)).reverse();
             trend = predictTrend(closes.slice(-5));
             backtest = backtestSignal(closes, 5);
+            isMover = isNearLow(closes, NEAR_LOW_THRESHOLD.stock) && trend === 'up';
+            pctFromLow = pctAboveLow(closes);
           }
         }
       }
       // quote.dp is Finnhub's percent change; quote.d is the absolute
       // dollar change — using dp here (previously this used d, which
       // displayed a dollar amount labeled with a % sign).
-      return { symbol, price: quote.c, change: quote.dp, trend, backtest, noHistorySource: !twelveDataKey };
+      return {
+        symbol, price: quote.c, change: quote.dp, trend, backtest,
+        noHistorySource: !twelveDataKey, isMover, pctAboveLow: pctFromLow
+      };
     }
 
     // Finnhub's free tier rate-limits by requests per second, not just
@@ -1147,10 +1276,13 @@
         }
 
         const held = getHeldPositions();
-        checkTrendChanges('stock', stockData.map(s => ({
-          key: s.symbol, label: s.symbol, trend: s.trend, held: held.stockSymbols.has(s.symbol)
-        })));
+        const stockAlertItems = stockData.map(s => ({
+          key: s.symbol, label: s.symbol, trend: s.trend, isMover: s.isMover, held: held.stockSymbols.has(s.symbol)
+        }));
+        checkTrendChanges('stock', stockAlertItems);
+        checkMoverChanges('stock', stockAlertItems);
         renderStocks(activeFilter());
+        renderMovers();
 
         statusEl.textContent = failed.length
           ? `Couldn't load: ${failed.map(f => `${f.symbol} (${f.error.message})`).join(', ')}`
