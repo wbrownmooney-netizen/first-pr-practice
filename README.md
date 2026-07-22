@@ -29,6 +29,10 @@ and stock quotes (via [Finnhub](https://finnhub.io/), which needs your own
 free API key — paste it into the page and it's stored only in your
 browser's local storage).
 
+A sticky row of jump links at the top (Alerts, Movers, Crypto, Stocks,
+Chart, News, Paper Trading) stays pinned while scrolling, since the page
+has grown into quite a few sections.
+
 Each row also shows a "next-step trend" of up/down/flat, computed as the
 sign of a least-squares line fit over the recent price history, plus a
 "historical accuracy" figure: how often that same signal matched the
