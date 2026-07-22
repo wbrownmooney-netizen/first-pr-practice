@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Crypto &amp; Stocks Dashboard</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<meta name="theme-color" content="#2563eb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Trading Demo">
 <style>
   :root {
     color-scheme: light dark;
@@ -1739,6 +1745,19 @@
 
     renderPaperAll();
     refreshPaperPrices();
+  </script>
+
+  <script>
+    // Registers the app-shell service worker (sw.js) for installability
+    // and basic offline support — never touches live price/news
+    // requests, only this site's own static files. Failing silently is
+    // fine here: the page works the same either way, just without the
+    // install-to-home-screen / offline-shell benefit.
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(() => {});
+      });
+    }
   </script>
 </body>
 </html>

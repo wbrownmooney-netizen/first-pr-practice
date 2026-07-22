@@ -21,6 +21,23 @@ python -m http.server 8000
 
 then visit `http://localhost:8000`.
 
+### Installing as an app (PWA)
+
+The site is an installable [Progressive Web App](https://web.dev/progressive-web-apps/):
+open it in Chrome/Edge on desktop or Android and use the browser's
+"Install" / "Add to Home Screen" option to get it as a standalone app
+with its own icon, no address bar. `manifest.json` defines the app
+metadata and icon; `sw.js` is a minimal service worker that caches only
+this site's own static files (HTML/JS/manifest/icon) for basic offline
+loading — it never touches CoinGecko, Finnhub, Twelve Data, news APIs,
+or the charting CDN, so it can't ever serve stale live prices or
+headlines. `icon.svg` is a hand-drawn SVG (no image-generation tooling
+was available to produce a raster PNG), which works well for Android/
+Chrome install icons; iOS Safari's home-screen icon support for SVG is
+inconsistent across versions, so it may fall back to a screenshot-based
+icon there instead — a fine, non-broken degrade, just not a custom icon
+on older iOS.
+
 ## Crypto & stocks dashboard
 
 `trading.html` is a second standalone page: live crypto prices (via the
