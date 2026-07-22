@@ -334,7 +334,7 @@
     <section id="news-section">
       <h2>News</h2>
       <p class="hint" style="margin-top:0;">
-        Crypto headlines via <a href="https://www.cryptocompare.com/" target="_blank" rel="noopener">CryptoCompare</a>
+        Crypto headlines via <a href="https://messari.io/" target="_blank" rel="noopener">Messari</a>
         (no key needed); market news via the same Finnhub key entered in
         the Stocks section above. Headlines only &mdash; nothing here is
         analyzed or scored, just linked out to the original source.
@@ -743,11 +743,19 @@
     async function loadCryptoNews() {
       const list = document.getElementById('crypto-news-list');
       try {
-        const res = await fetchWithNetworkRetry('https://min-api.cryptocompare.com/data/v2/news/?lang=EN');
-        if (!res.ok) throw new Error('CryptoCompare request failed: ' + res.status);
+        // Switched from CryptoCompare after its API turned out to block
+        // direct browser requests via CORS. Messari's field names are
+        // parsed defensively (a couple of possible spots for the
+        // source URL) since this hasn't been verified against a live
+        // response, only against documented/recalled shape.
+        const res = await fetchWithNetworkRetry('https://data.messari.io/api/v1/news?limit=12');
+        if (!res.ok) throw new Error('Messari request failed: ' + res.status);
         const data = await res.json();
-        const items = (data.Data || []).slice(0, 12).map(a => ({
-          url: a.url, title: a.title, source: (a.source_info && a.source_info.name) || a.source, time: a.published_on
+        const items = (data.data || []).slice(0, 12).map(a => ({
+          url: a.url || (Array.isArray(a.references) && a.references[0] && a.references[0].url) || null,
+          title: a.title,
+          source: (a.author && a.author.name) || 'Messari',
+          time: a.published_at ? Math.floor(new Date(a.published_at).getTime() / 1000) : Math.floor(Date.now() / 1000)
         }));
         if (items.length === 0) {
           list.innerHTML = '<li class="status">No articles right now.</li>';
