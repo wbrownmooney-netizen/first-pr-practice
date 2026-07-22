@@ -101,6 +101,24 @@ The trend/accuracy logic lives in `signals.js`, shared by the page and by
 shows pass/fail results in the browser — open it directly to run the
 tests, no build step or test runner needed.
 
+### News
+
+A **News** section shows recent headlines, linked out to their original
+source — crypto via [CryptoCompare](https://www.cryptocompare.com/) (no
+key needed), market news via the same Finnhub key used above. It's
+headlines only: nothing is analyzed, scored, or treated as a trading
+signal, and a "Refresh news" button re-fetches both lists on demand.
+Article titles and links come from third-party APIs, so they're escaped
+before being inserted into the page, and a link only renders if it
+parses as a plain `http`/`https` URL — otherwise the headline shows as
+plain text.
+
+With live alerts enabled, a new headline in either feed also triggers a
+browser notification — same change-detection idea as trend alerts: each
+feed's first successful load just establishes a baseline silently, so
+turning alerts on doesn't fire one notification per existing headline,
+only for ones that show up afterward.
+
 ## Paper trading simulator
 
 The **Paper Trading Simulator** is a section further down `trading.html`
