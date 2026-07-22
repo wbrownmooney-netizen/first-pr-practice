@@ -113,6 +113,12 @@ before being inserted into the page, and a link only renders if it
 parses as a plain `http`/`https` URL — otherwise the headline shows as
 plain text.
 
+With live alerts enabled, a new headline in either feed also triggers a
+browser notification — same change-detection idea as trend alerts: each
+feed's first successful load just establishes a baseline silently, so
+turning alerts on doesn't fire one notification per existing headline,
+only for ones that show up afterward.
+
 ## Paper trading simulator
 
 The **Paper Trading Simulator** is a section further down `trading.html`

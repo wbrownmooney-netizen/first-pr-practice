@@ -192,11 +192,12 @@
       <h2>Live trend alerts</h2>
       <p class="hint" style="margin-top:0;">
         Get a browser notification whenever a coin or watchlist stock's
-        trend flips to up or down. This only works while this tab stays
-        open in your browser &mdash; there's no server behind this page,
-        so it can't notify you after you close it. Whatever triggered an
-        alert also gets its row highlighted in the table below for a
-        couple of minutes, so it's easy to spot at a glance.
+        trend flips to up or down, or a new headline shows up in the
+        News section below. This only works while this tab stays open
+        in your browser &mdash; there's no server behind this page, so
+        it can't notify you after you close it. A trend alert also gets
+        its row highlighted in the table below for a couple of minutes,
+        so it's easy to spot at a glance.
       </p>
       <div class="row-inline">
         <button id="alerts-toggle">Enable live alerts</button>
@@ -612,10 +613,11 @@
           return;
         }
         alertsEnabled = true;
-        setAlertsUi(true, 'Watching for trend changes every 60s while this tab stays open.');
+        setAlertsUi(true, 'Watching for trend changes and new headlines every 60s while this tab stays open.');
         alertsTimer = setInterval(() => {
           loadCrypto();
           pollStocksIfConfigured();
+          loadNews();
         }, 60000);
       });
     });
@@ -681,14 +683,38 @@
       return `${Math.floor(hours / 24)}d ago`;
     }
 
-    function newsItemHtml(title, url, source, unixSeconds) {
-      const titleHtml = escapeHtml(title);
-      const link = safeHttpUrl(url);
+    function newsItemHtml(item) {
+      const titleHtml = escapeHtml(item.title);
+      const link = safeHttpUrl(item.url);
       const heading = link
         ? `<a href="${escapeHtml(link)}" target="_blank" rel="noopener">${titleHtml}</a>`
         : titleHtml;
-      return `<li>${heading}<div class="news-meta">${escapeHtml(source || 'Unknown source')} &middot; ${timeAgo(unixSeconds)}</div></li>`;
+      return `<li>${heading}<div class="news-meta">${escapeHtml(item.source || 'Unknown source')} &middot; ${timeAgo(item.time)}</div></li>`;
     }
+
+    // Fires a live alert for headlines not seen on a previous check —
+    // same "only alert while alertsEnabled" gate as trend alerts. The
+    // very first successful load for a given feed just seeds `seen`
+    // silently (an empty set means "no baseline yet"), so turning on
+    // alerts doesn't immediately fire one notification per existing
+    // headline.
+    function checkForNewArticles(items, seen, categoryLabel) {
+      const hadBaseline = seen.size > 0;
+      const fresh = items.filter(i => i.url && !seen.has(i.url));
+      items.forEach(i => { if (i.url) seen.add(i.url); });
+
+      if (alertsEnabled && hadBaseline && fresh.length > 0) {
+        if (fresh.length === 1) {
+          notify(`New ${categoryLabel} headline`, fresh[0].title);
+        } else {
+          notify(`${fresh.length} new ${categoryLabel} headlines`,
+            fresh.slice(0, 3).map(i => i.title).join(' • '));
+        }
+      }
+    }
+
+    const seenCryptoNewsUrls = new Set();
+    const seenStockNewsUrls = new Set();
 
     async function loadCryptoNews() {
       const list = document.getElementById('crypto-news-list');
@@ -696,14 +722,15 @@
         const res = await fetchWithNetworkRetry('https://min-api.cryptocompare.com/data/v2/news/?lang=EN');
         if (!res.ok) throw new Error('CryptoCompare request failed: ' + res.status);
         const data = await res.json();
-        const articles = (data.Data || []).slice(0, 12);
-        if (articles.length === 0) {
+        const items = (data.Data || []).slice(0, 12).map(a => ({
+          url: a.url, title: a.title, source: (a.source_info && a.source_info.name) || a.source, time: a.published_on
+        }));
+        if (items.length === 0) {
           list.innerHTML = '<li class="status">No articles right now.</li>';
           return;
         }
-        list.innerHTML = articles.map(a =>
-          newsItemHtml(a.title, a.url, (a.source_info && a.source_info.name) || a.source, a.published_on)
-        ).join('');
+        list.innerHTML = items.map(newsItemHtml).join('');
+        checkForNewArticles(items, seenCryptoNewsUrls, 'crypto');
       } catch (err) {
         list.innerHTML = `<li class="status error">Couldn't load crypto news: ${escapeHtml(err.message)}</li>`;
       }
@@ -723,14 +750,14 @@
           return;
         }
         if (!res.ok) throw new Error('Finnhub request failed: ' + res.status);
-        const articles = await res.json();
-        if (!Array.isArray(articles) || articles.length === 0) {
+        const raw = await res.json();
+        if (!Array.isArray(raw) || raw.length === 0) {
           list.innerHTML = '<li class="status">No articles right now.</li>';
           return;
         }
-        list.innerHTML = articles.slice(0, 12).map(a =>
-          newsItemHtml(a.headline, a.url, a.source, a.datetime)
-        ).join('');
+        const items = raw.slice(0, 12).map(a => ({ url: a.url, title: a.headline, source: a.source, time: a.datetime }));
+        list.innerHTML = items.map(newsItemHtml).join('');
+        checkForNewArticles(items, seenStockNewsUrls, 'market');
       } catch (err) {
         list.innerHTML = `<li class="status error">Couldn't load market news: ${escapeHtml(err.message)}</li>`;
       }
