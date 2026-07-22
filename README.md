@@ -124,18 +124,25 @@ rejects.
 ### News
 
 A **News** section shows recent headlines, linked out to their original
-source — crypto via [Messari](https://messari.io/) (no key needed),
-market news via the same Finnhub key used above. (Originally used
-CryptoCompare for crypto headlines, but its API turned out to block
-direct browser requests via CORS — Messari was picked as a next attempt,
-not a verified-working replacement; if it also fails to load, that's the
-same class of problem, and there may not be a truly free, CORS-friendly,
-keyless crypto news API to reach for next.) It's headlines only: nothing
-is analyzed, scored, or treated as a trading signal, and a "Refresh
-news" button re-fetches both lists on demand. Article titles and links
-come from third-party APIs, so they're escaped before being inserted
-into the page, and a link only renders if it parses as a plain
-`http`/`https` URL — otherwise the headline shows as plain text.
+source — crypto attempts to load via [CoinStats](https://coinstats.app/)
+(no key needed), market news via the same Finnhub key used above. It's
+headlines only: nothing is analyzed, scored, or treated as a trading
+signal, and a "Refresh news" button re-fetches both lists on demand.
+Article titles and links come from third-party APIs, so they're escaped
+before being inserted into the page, and a link only renders if it
+parses as a plain `http`/`https` URL — otherwise the headline shows as
+plain text.
+
+Crypto news specifically has been a rough spot: two earlier providers
+(CryptoCompare, then Messari) both failed to load in-browser — one with
+a confirmed CORS block, one with an unclear connection failure — before
+landing on CoinStats as a third attempt, also unverified. Rather than
+risk another dead end, any crypto-news fetch failure now falls back
+automatically to a short message plus links to a few well-known crypto
+news sites (CoinDesk, CoinTelegraph, The Block), so this section always
+shows something useful even if the live feed never works from a
+browser. Market news via Finnhub doesn't have this fallback, since it
+hasn't shown the same failure pattern.
 
 With live alerts enabled, a new headline in either feed also triggers a
 browser notification — same change-detection idea as trend alerts: each

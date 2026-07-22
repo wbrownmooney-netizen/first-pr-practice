@@ -334,10 +334,13 @@
     <section id="news-section">
       <h2>News</h2>
       <p class="hint" style="margin-top:0;">
-        Crypto headlines via <a href="https://messari.io/" target="_blank" rel="noopener">Messari</a>
-        (no key needed); market news via the same Finnhub key entered in
-        the Stocks section above. Headlines only &mdash; nothing here is
-        analyzed or scored, just linked out to the original source.
+        Crypto headlines attempt to load via
+        <a href="https://coinstats.app/" target="_blank" rel="noopener">CoinStats</a>
+        (no key needed) &mdash; if that fails, you'll see a few links to
+        well-known crypto news sites instead. Market news via the same
+        Finnhub key entered in the Stocks section above. Headlines only
+        &mdash; nothing here is analyzed or scored, just linked out to
+        the original source.
       </p>
       <div class="row-inline">
         <button class="ghost" id="news-refresh-btn">Refresh news</button>
@@ -740,22 +743,42 @@
     const seenCryptoNewsUrls = new Set();
     const seenStockNewsUrls = new Set();
 
+    // Two prior attempts at a free, keyless, in-browser crypto news feed
+    // (CryptoCompare, then Messari) both failed to load — CryptoCompare
+    // with a confirmed CORS block, Messari with an unclear connection
+    // failure. Rather than risk a third silent failure, any fetch error
+    // here now falls back to a short, honest message plus links to a
+    // few well-known crypto news sites, so this section is never a dead
+    // end regardless of whether the live fetch below actually works.
+    const CRYPTO_NEWS_FALLBACK_LINKS = [
+      { name: 'CoinDesk', url: 'https://www.coindesk.com/' },
+      { name: 'CoinTelegraph', url: 'https://cointelegraph.com/' },
+      { name: 'The Block', url: 'https://www.theblock.co/' }
+    ];
+
+    function renderCryptoNewsFallback(list, reason) {
+      const links = CRYPTO_NEWS_FALLBACK_LINKS.map(l =>
+        `<li><a href="${escapeHtml(l.url)}" target="_blank" rel="noopener">${escapeHtml(l.name)}</a></li>`
+      ).join('');
+      list.innerHTML = `
+        <li class="status">Couldn't load a live crypto feed in-browser (${escapeHtml(reason)}) — most crypto news APIs block direct browser access. Try these instead:</li>
+        ${links}`;
+    }
+
     async function loadCryptoNews() {
       const list = document.getElementById('crypto-news-list');
       try {
-        // Switched from CryptoCompare after its API turned out to block
-        // direct browser requests via CORS. Messari's field names are
-        // parsed defensively (a couple of possible spots for the
-        // source URL) since this hasn't been verified against a live
-        // response, only against documented/recalled shape.
-        const res = await fetchWithNetworkRetry('https://data.messari.io/api/v1/news?limit=12');
-        if (!res.ok) throw new Error('Messari request failed: ' + res.status);
+        // Third attempt, after CryptoCompare and Messari — CoinStats'
+        // field names are parsed defensively since this hasn't been
+        // verified against a live response either.
+        const res = await fetchWithNetworkRetry('https://api.coinstats.app/public/v1/news?skip=0&limit=12');
+        if (!res.ok) throw new Error('CoinStats request failed: ' + res.status);
         const data = await res.json();
-        const items = (data.data || []).slice(0, 12).map(a => ({
-          url: a.url || (Array.isArray(a.references) && a.references[0] && a.references[0].url) || null,
+        const items = (data.news || []).slice(0, 12).map(a => ({
+          url: a.link || a.url || null,
           title: a.title,
-          source: (a.author && a.author.name) || 'Messari',
-          time: a.published_at ? Math.floor(new Date(a.published_at).getTime() / 1000) : Math.floor(Date.now() / 1000)
+          source: a.source || 'CoinStats',
+          time: a.feedDate ? Math.floor(new Date(a.feedDate).getTime() / 1000) : Math.floor(Date.now() / 1000)
         }));
         if (items.length === 0) {
           list.innerHTML = '<li class="status">No articles right now.</li>';
@@ -764,7 +787,7 @@
         list.innerHTML = items.map(newsItemHtml).join('');
         checkForNewArticles(items, seenCryptoNewsUrls, 'crypto');
       } catch (err) {
-        list.innerHTML = `<li class="status error">Couldn't load crypto news: ${escapeHtml(err.message)}</li>`;
+        renderCryptoNewsFallback(list, err.message);
       }
     }
 
