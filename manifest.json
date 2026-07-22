@@ -1,0 +1,14 @@
+{
+  "name": "Crypto & Stocks Dashboard",
+  "short_name": "Trading Demo",
+  "description": "A practice PR project: crypto/stock dashboard, paper trading, and simulated options. Not investment advice.",
+  "start_url": "trading.html",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#f6f7f9",
+  "theme_color": "#2563eb",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
