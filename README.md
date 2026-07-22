@@ -101,6 +101,26 @@ The trend/accuracy logic lives in `signals.js`, shared by the page and by
 shows pass/fail results in the browser — open it directly to run the
 tests, no build step or test runner needed.
 
+### Chart
+
+A **Chart** section renders an interactive candlestick chart — drag to
+pan, scroll/pinch to zoom, hover for exact OHLC values — via
+[Lightweight Charts](https://www.tradingview.com/lightweight-charts/),
+loaded from a CDN. This is the one external runtime dependency on an
+otherwise fully self-contained page; if the CDN is blocked or
+unreachable, the chart section shows a clear error instead of breaking
+anything else. Crypto candles come from CoinGecko's OHLC endpoint (same
+ticker-or-id handling as elsewhere, no key needed); stock candles reuse
+Twelve Data's `time_series` endpoint (the same one behind stock
+trend/accuracy), so they need that same optional key. The chart re-themes
+automatically if you switch your OS between light and dark mode.
+
+Crypto's 30-day OHLC data from CoinGecko is 4-hourly, not daily, so
+candle times are plotted as exact Unix timestamps rather than
+calendar-day strings — otherwise multiple same-day candles would collapse
+into duplicate, non-ascending time values, which the charting library
+rejects.
+
 ### News
 
 A **News** section shows recent headlines, linked out to their original
