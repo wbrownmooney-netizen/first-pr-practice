@@ -83,10 +83,25 @@ Open it directly, or click through from `index.html`.
 An **"Enable live alerts"** button turns on browser notifications: while
 the tab stays open, the page re-polls every 60 seconds and fires a
 notification whenever a coin or watchlist stock's trend flips to up or
-down. There's no backend behind this page, so alerts only fire while the
-tab is open — closing it stops them. Whatever triggered an alert also
-gets its row highlighted in the table (a brief pulse, then a steady
-tint) for about two minutes, so it's easy to spot which one changed.
+down, or becomes a potential mover (see below). There's no backend
+behind this page, so alerts only fire while the tab is open — closing it
+stops them. Whatever triggered an alert also gets its row highlighted in
+the table (a brief pulse, then a steady tint) for about two minutes, so
+it's easy to spot which one changed.
+
+A **Potential Movers** section pulls out anything currently near its
+recent low (within 10% for crypto, 5% for stocks — arbitrary, disclosed
+thresholds) *with* an upward trend signal at the same time — a naive
+"possible bounce" heuristic layering two already-naive signals on top of
+each other. Qualifying rows also get a **MOVER** badge and a persistent
+amber tint in the main crypto/stock tables, and (with live alerts on)
+a notification the moment a symbol first qualifies. This is explicitly
+not a prediction that anything will actually reverse — most beaten-down
+assets stay beaten down — and definitely not investment advice. Stock
+movers need a Twelve Data key (for price history), same as stock
+trend/accuracy elsewhere on the page. The underlying `isNearLow` check
+lives in `signals.js`, tested in `test.html` alongside the rest of the
+signal logic.
 
 The dashboard is aware of your [paper trading](#paper-trading-simulator)
 holdings (read from the same browser's localStorage — no extra setup):

@@ -35,3 +35,14 @@ function backtestSignal(prices, window) {
   }
   return trials > 0 ? { accuracy: correct / trials, trials } : null;
 }
+
+// True if the most recent price sits within `thresholdPct` percent above
+// the lowest price in the series — a naive "near its recent low" proxy,
+// not a real support/resistance analysis.
+function isNearLow(prices, thresholdPct) {
+  if (!prices || prices.length < 2) return false;
+  const low = Math.min(...prices);
+  if (low <= 0) return false;
+  const current = prices[prices.length - 1];
+  return ((current - low) / low) * 100 <= thresholdPct;
+}

@@ -55,8 +55,9 @@
 <body>
   <div class="wrap">
     <h1>Signal logic tests</h1>
-    <p>Checks <code>predictTrend</code> and <code>backtestSignal</code> from
-      <code>signals.js</code>, <code>buyPosition</code>/<code>sellPosition</code>
+    <p>Checks <code>predictTrend</code>, <code>backtestSignal</code>, and
+      <code>isNearLow</code> from <code>signals.js</code>,
+      <code>buyPosition</code>/<code>sellPosition</code>
       from <code>portfolio.js</code>, and <code>blackScholesPrice</code> from
       <code>options.js</code>, against known inputs and outputs.</p>
     <p id="summary"></p>
@@ -116,6 +117,23 @@
 
     test('backtestSignal: window bigger than data -> null', () => {
       assertEqual(backtestSignal([1, 2, 3], 5), null, 'backtest');
+    });
+
+    test('isNearLow: current price close to the series minimum -> true', () => {
+      assertEqual(isNearLow([10, 8, 5, 5.1], 5), true, 'near low');
+    });
+
+    test('isNearLow: current price well above the series minimum -> false', () => {
+      assertEqual(isNearLow([10, 8, 5, 6], 5), false, 'near low');
+    });
+
+    test('isNearLow: fewer than 2 points -> false', () => {
+      assertEqual(isNearLow([5], 5), false, 'near low');
+      assertEqual(isNearLow([], 5), false, 'near low');
+    });
+
+    test('isNearLow: non-positive low is guarded against -> false', () => {
+      assertEqual(isNearLow([0, 0, 0], 5), false, 'near low');
     });
 
     test('buyPosition: opening a new position sets avg cost to the trade price', () => {
