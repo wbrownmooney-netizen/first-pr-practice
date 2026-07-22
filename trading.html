@@ -158,6 +158,12 @@
   .hint a { color: var(--accent); }
   .status { font-size: 0.85rem; color: var(--muted); margin-top: 0.5rem; }
   .status.error { color: var(--down); }
+  .news-list { list-style: none; margin: 0; padding: 0; }
+  .news-list li { padding: 0.6rem 0; border-bottom: 1px solid var(--border); }
+  .news-list li:last-child { border-bottom: none; }
+  .news-list a { color: var(--text); text-decoration: none; font-weight: 600; font-size: 0.9rem; }
+  .news-list a:hover { color: var(--accent); }
+  .news-meta { color: var(--muted); font-size: 0.75rem; margin-top: 0.15rem; }
 </style>
 </head>
 <body>
@@ -299,6 +305,27 @@
         </tbody>
       </table>
       <p id="stock-status" class="status"></p>
+    </section>
+
+    <section id="news-section">
+      <h2>News</h2>
+      <p class="hint" style="margin-top:0;">
+        Crypto headlines via <a href="https://www.cryptocompare.com/" target="_blank" rel="noopener">CryptoCompare</a>
+        (no key needed); market news via the same Finnhub key entered in
+        the Stocks section above. Headlines only &mdash; nothing here is
+        analyzed or scored, just linked out to the original source.
+      </p>
+      <div class="row-inline">
+        <button class="ghost" id="news-refresh-btn">Refresh news</button>
+      </div>
+      <h3 style="font-size: 0.95rem; margin: 1.25rem 0 0.75rem;">Crypto</h3>
+      <ul id="crypto-news-list" class="news-list">
+        <li class="status">Loading&hellip;</li>
+      </ul>
+      <h3 style="font-size: 0.95rem; margin: 1.25rem 0 0.75rem;">Markets</h3>
+      <ul id="stock-news-list" class="news-list">
+        <li class="status">Loading&hellip;</li>
+      </ul>
     </section>
 
     <section id="paper-trading-section">
@@ -623,6 +650,98 @@
         return await fetch(url);
       }
     }
+
+    // --- News -----------------------------------------------------------
+    // Headlines only, linked out to their original source — nothing here
+    // is analyzed, scored, or treated as a signal. Article text comes
+    // from third-party APIs, so it's escaped before being inserted into
+    // the page, and links are only ever rendered if they parse as a
+    // plain http(s) URL.
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str == null ? '' : String(str);
+      return div.innerHTML;
+    }
+
+    function safeHttpUrl(url) {
+      try {
+        const parsed = new URL(url);
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.href : null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function timeAgo(unixSeconds) {
+      const minutes = Math.floor((Date.now() - unixSeconds * 1000) / 60000);
+      if (minutes < 1) return 'just now';
+      if (minutes < 60) return `${minutes}m ago`;
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}h ago`;
+      return `${Math.floor(hours / 24)}d ago`;
+    }
+
+    function newsItemHtml(title, url, source, unixSeconds) {
+      const titleHtml = escapeHtml(title);
+      const link = safeHttpUrl(url);
+      const heading = link
+        ? `<a href="${escapeHtml(link)}" target="_blank" rel="noopener">${titleHtml}</a>`
+        : titleHtml;
+      return `<li>${heading}<div class="news-meta">${escapeHtml(source || 'Unknown source')} &middot; ${timeAgo(unixSeconds)}</div></li>`;
+    }
+
+    async function loadCryptoNews() {
+      const list = document.getElementById('crypto-news-list');
+      try {
+        const res = await fetchWithNetworkRetry('https://min-api.cryptocompare.com/data/v2/news/?lang=EN');
+        if (!res.ok) throw new Error('CryptoCompare request failed: ' + res.status);
+        const data = await res.json();
+        const articles = (data.Data || []).slice(0, 12);
+        if (articles.length === 0) {
+          list.innerHTML = '<li class="status">No articles right now.</li>';
+          return;
+        }
+        list.innerHTML = articles.map(a =>
+          newsItemHtml(a.title, a.url, (a.source_info && a.source_info.name) || a.source, a.published_on)
+        ).join('');
+      } catch (err) {
+        list.innerHTML = `<li class="status error">Couldn't load crypto news: ${escapeHtml(err.message)}</li>`;
+      }
+    }
+
+    async function loadStockNews() {
+      const list = document.getElementById('stock-news-list');
+      const key = document.getElementById('finnhub-key').value.trim();
+      if (!key) {
+        list.innerHTML = '<li class="status">Add a Finnhub key in the Stocks section above to load market news.</li>';
+        return;
+      }
+      try {
+        const res = await fetchWithNetworkRetry(`https://finnhub.io/api/v1/news?category=general&token=${key}`);
+        if (res.status === 403) {
+          list.innerHTML = '<li class="status">Market news isn\'t available on this Finnhub plan.</li>';
+          return;
+        }
+        if (!res.ok) throw new Error('Finnhub request failed: ' + res.status);
+        const articles = await res.json();
+        if (!Array.isArray(articles) || articles.length === 0) {
+          list.innerHTML = '<li class="status">No articles right now.</li>';
+          return;
+        }
+        list.innerHTML = articles.slice(0, 12).map(a =>
+          newsItemHtml(a.headline, a.url, a.source, a.datetime)
+        ).join('');
+      } catch (err) {
+        list.innerHTML = `<li class="status error">Couldn't load market news: ${escapeHtml(err.message)}</li>`;
+      }
+    }
+
+    function loadNews() {
+      loadCryptoNews();
+      loadStockNews();
+    }
+
+    document.getElementById('news-refresh-btn').addEventListener('click', loadNews);
 
     async function loadCrypto() {
       const tbody = document.getElementById('crypto-rows');
@@ -1219,6 +1338,7 @@
 
     loadCrypto();
     if (savedKey) fetchStocks();
+    loadNews();
 
     renderPaperAll();
     refreshPaperPrices();
