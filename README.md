@@ -75,7 +75,12 @@ outright ("Failed to fetch") rather than error cleanly, so this dials
 back to a lighter, more reliable payload. The main request also retries
 once on that kind of network-level failure before giving up. The table
 scrolls independently with a sticky header so a 100-row list doesn't
-take over the page. Stocks come
+take over the page. Every table on the page (this one included) scrolls
+horizontally within its own container on narrow screens instead of
+squeezing its columns into unreadable, wrapped cells — found and fixed
+by actually testing the live site at a mobile viewport width, since a
+few of the wider tables (Holdings, Options) were genuinely overflowing
+their card before this. Stocks come
 from a comma-separated watchlist — pre-filled with a default set of 5
 well-known large-cap symbols so there's something to see immediately, and
 freely editable to whatever you actually want to track. (Neither Finnhub

@@ -119,8 +119,10 @@
   th, td { text-align: left; padding: 0.5rem 0.4rem; border-bottom: 1px solid var(--border); }
   th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; }
   td.num, th.num { text-align: right; }
-  .table-scroll { max-height: 480px; overflow-y: auto; }
+  .table-scroll { max-height: 480px; overflow-y: auto; overflow-x: auto; }
   .table-scroll thead th { position: sticky; top: 0; background: var(--card); }
+  .table-wrap { overflow-x: auto; }
+  .table-wrap table { min-width: 480px; }
   tr.alert-highlight { background: var(--alert-bg); animation: alert-pulse 1.2s ease-in-out 2; }
   @keyframes alert-pulse {
     0%, 100% { background: var(--alert-bg); }
@@ -278,20 +280,22 @@
         Stocks only show up here with a Twelve Data key entered (needed
         for their price history).
       </p>
-      <table>
-        <thead>
-          <tr>
-            <th>Symbol</th>
-            <th class="num">Price</th>
-            <th class="num">Above recent low</th>
-            <th class="num">Trend</th>
-            <th class="num" title="How often this same trend signal has been right in the recent past">Historical accuracy</th>
-          </tr>
-        </thead>
-        <tbody id="movers-rows">
-          <tr><td colspan="5" class="status">Loading&hellip;</td></tr>
-        </tbody>
-      </table>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th class="num">Price</th>
+              <th class="num">Above recent low</th>
+              <th class="num">Trend</th>
+              <th class="num" title="How often this same trend signal has been right in the recent past">Historical accuracy</th>
+            </tr>
+          </thead>
+          <tbody id="movers-rows">
+            <tr><td colspan="5" class="status">Loading&hellip;</td></tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <section id="explainer-section">
@@ -380,20 +384,22 @@
         <button class="filter-btn" data-filter="up">Trending up</button>
         <button class="filter-btn" data-filter="down">Trending down</button>
       </div>
-      <table>
-        <thead>
-          <tr>
-            <th>Symbol</th>
-            <th class="num">Price (USD)</th>
-            <th class="num">Change</th>
-            <th class="num" title="A guess at the price direction, based on recent history">Trend</th>
-            <th class="num" title="How often this same guess has been right in the recent past">Accuracy</th>
-          </tr>
-        </thead>
-        <tbody id="stock-rows">
-          <tr><td colspan="5" class="status">Enter a key and one or more symbols above.</td></tr>
-        </tbody>
-      </table>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th class="num">Price (USD)</th>
+              <th class="num">Change</th>
+              <th class="num" title="A guess at the price direction, based on recent history">Trend</th>
+              <th class="num" title="How often this same guess has been right in the recent past">Accuracy</th>
+            </tr>
+          </thead>
+          <tbody id="stock-rows">
+            <tr><td colspan="5" class="status">Enter a key and one or more symbols above.</td></tr>
+          </tbody>
+        </table>
+      </div>
       <p id="stock-status" class="status"></p>
     </section>
 
@@ -489,21 +495,23 @@
       <p id="trade-status" class="status"></p>
 
       <h3 style="font-size: 0.95rem; margin: 1.25rem 0 0.75rem;">Holdings</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>Symbol</th>
-            <th class="num">Quantity</th>
-            <th class="num">Avg cost</th>
-            <th class="num">Current price</th>
-            <th class="num">Market value</th>
-            <th class="num">Unrealized P/L</th>
-          </tr>
-        </thead>
-        <tbody id="holdings-rows">
-          <tr><td colspan="6" class="status">No holdings yet &mdash; place a trade above.</td></tr>
-        </tbody>
-      </table>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th class="num">Quantity</th>
+              <th class="num">Avg cost</th>
+              <th class="num">Current price</th>
+              <th class="num">Market value</th>
+              <th class="num">Unrealized P/L</th>
+            </tr>
+          </thead>
+          <tbody id="holdings-rows">
+            <tr><td colspan="6" class="status">No holdings yet &mdash; place a trade above.</td></tr>
+          </tbody>
+        </table>
+      </div>
       <p class="row-inline" style="margin-top:0.9rem;">
         <button class="ghost" id="refresh-btn">Refresh prices</button>
       </p>
@@ -542,38 +550,42 @@
         trade form above; stocks use the same Finnhub key.
       </p>
       <p id="option-status" class="status"></p>
-      <table>
-        <thead>
-          <tr>
-            <th>Contract</th>
-            <th>Expires</th>
-            <th class="num">Qty</th>
-            <th class="num">Premium paid</th>
-            <th class="num">Current value</th>
-            <th class="num">P/L</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="options-rows">
-          <tr><td colspan="7" class="status">No option positions yet.</td></tr>
-        </tbody>
-      </table>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Contract</th>
+              <th>Expires</th>
+              <th class="num">Qty</th>
+              <th class="num">Premium paid</th>
+              <th class="num">Current value</th>
+              <th class="num">P/L</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="options-rows">
+            <tr><td colspan="7" class="status">No option positions yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
 
       <h3 style="font-size: 0.95rem; margin: 1.25rem 0 0.75rem;">Trade history</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>Time</th>
-            <th>Action</th>
-            <th>Symbol</th>
-            <th class="num">Quantity</th>
-            <th class="num">Price</th>
-          </tr>
-        </thead>
-        <tbody id="history-rows">
-          <tr><td colspan="5" class="status">No trades yet.</td></tr>
-        </tbody>
-      </table>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Action</th>
+              <th>Symbol</th>
+              <th class="num">Quantity</th>
+              <th class="num">Price</th>
+            </tr>
+          </thead>
+          <tbody id="history-rows">
+            <tr><td colspan="5" class="status">No trades yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
     </section>
   </div>
 
