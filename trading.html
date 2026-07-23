@@ -472,6 +472,10 @@
           <div class="label">Portfolio value (cash + holdings)</div>
           <div class="value" id="total-value">$0.00</div>
         </div>
+        <div>
+          <div class="label" title="Total profit/loss actually locked in from closed trades — sells and closed options only. Unsold positions don't count until you sell them.">Realized P/L (all-time)</div>
+          <div class="value" id="realized-pl-value">$0.00</div>
+        </div>
         <button class="ghost" id="reset-btn">Reset to $10,000</button>
       </div>
 
@@ -579,10 +583,11 @@
               <th>Symbol</th>
               <th class="num">Quantity</th>
               <th class="num">Price</th>
+              <th class="num" title="Profit/loss locked in by this specific sell — blank for buys">Realized P/L</th>
             </tr>
           </thead>
           <tbody id="history-rows">
-            <tr><td colspan="5" class="status">No trades yet.</td></tr>
+            <tr><td colspan="6" class="status">No trades yet.</td></tr>
           </tbody>
         </table>
       </div>
@@ -1372,10 +1377,11 @@
         if (raw) {
           const state = JSON.parse(raw);
           if (!state.options) state.options = []; // older saved state predates options
+          if (typeof state.realizedPL !== 'number') state.realizedPL = 0; // predates realized P/L tracking
           return state;
         }
       } catch (e) { /* fall through to fresh state */ }
-      return { cash: STARTING_CASH, positions: {}, history: [], options: [] };
+      return { cash: STARTING_CASH, positions: {}, history: [], options: [], realizedPL: 0 };
     }
 
     function savePaperState() {
@@ -1482,6 +1488,10 @@
         if (value != null) optionsValue += value * opt.quantity;
       }
       document.getElementById('total-value').textContent = fmtUsd(paperState.cash + holdingsValue + optionsValue);
+
+      const realizedEl = document.getElementById('realized-pl-value');
+      realizedEl.textContent = (paperState.realizedPL >= 0 ? '+' : '') + fmtUsd(paperState.realizedPL);
+      realizedEl.className = 'value ' + (paperState.realizedPL >= 0 ? 'up' : 'down');
     }
 
     function renderPaperHoldings() {
@@ -1514,17 +1524,22 @@
     function renderPaperHistory() {
       const tbody = document.getElementById('history-rows');
       if (paperState.history.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="status">No trades yet.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="status">No trades yet.</td></tr>';
         return;
       }
-      tbody.innerHTML = paperState.history.slice().reverse().map(t => `
+      tbody.innerHTML = paperState.history.slice().reverse().map(t => {
+        const plClass = t.realizedPL == null ? 'flat' : t.realizedPL >= 0 ? 'up' : 'down';
+        const plText = t.realizedPL == null ? '—' : (t.realizedPL >= 0 ? '+' : '') + fmtUsd(t.realizedPL);
+        return `
         <tr>
           <td>${new Date(t.time).toLocaleString()}</td>
           <td class="${t.action.startsWith('buy') ? 'up' : 'down'}">${t.action.toUpperCase()}</td>
           <td>${t.type}:${t.symbol}</td>
           <td class="num">${t.quantity}</td>
           <td class="num">${fmtUsd(t.price)}</td>
-        </tr>`).join('');
+          <td class="num ${plClass}">${plText}</td>
+        </tr>`;
+      }).join('');
     }
 
     function renderOptions() {
@@ -1592,6 +1607,7 @@
         const price = await fetchPaperPrice(type, normSymbol, key);
         const posKey = paperPositionKey(type, normSymbol);
         const cost = price * quantity;
+        let realizedPL = null;
 
         if (action === 'buy') {
           if (cost > paperState.cash) {
@@ -1602,19 +1618,23 @@
           paperState.positions[posKey] = buyPosition(paperState.positions[posKey], quantity, price);
           paperState.cash -= cost;
         } else {
-          if (!paperState.positions[posKey] || paperState.positions[posKey].quantity < quantity) {
+          const existing = paperState.positions[posKey];
+          if (!existing || existing.quantity < quantity) {
             statusEl.textContent = `You don't hold enough ${normSymbol} to sell ${quantity}.`;
             statusEl.className = 'status error';
             return;
           }
-          paperState.positions[posKey] = sellPosition(paperState.positions[posKey], quantity);
+          realizedPL = realizedGain(existing.avgCost, price, quantity);
+          paperState.realizedPL += realizedPL;
+          paperState.positions[posKey] = sellPosition(existing, quantity);
           paperState.cash += cost;
         }
 
-        paperState.history.push({ time: Date.now(), action, type, symbol: normSymbol, quantity, price });
+        paperState.history.push({ time: Date.now(), action, type, symbol: normSymbol, quantity, price, realizedPL });
         savePaperState();
         renderPaperAll();
-        statusEl.textContent = `${action === 'buy' ? 'Bought' : 'Sold'} ${quantity} ${normSymbol} at ${fmtUsd(price)}.`;
+        const plNote = realizedPL != null ? ` (${realizedPL >= 0 ? '+' : ''}${fmtUsd(realizedPL)} realized)` : '';
+        statusEl.textContent = `${action === 'buy' ? 'Bought' : 'Sold'} ${quantity} ${normSymbol} at ${fmtUsd(price)}${plNote}.`;
         statusEl.className = 'status';
       } catch (err) {
         statusEl.textContent = "Couldn't place trade: " + err.message;
@@ -1627,7 +1647,7 @@
     document.getElementById('refresh-btn').addEventListener('click', refreshPaperPrices);
     document.getElementById('reset-btn').addEventListener('click', () => {
       if (!confirm('Reset your paper portfolio back to $10,000 cash? This clears all holdings, options, and history.')) return;
-      paperState = { cash: STARTING_CASH, positions: {}, history: [], options: [] };
+      paperState = { cash: STARTING_CASH, positions: {}, history: [], options: [], realizedPL: 0 };
       paperLivePrices = {};
       savePaperState();
       renderPaperAll();
@@ -1709,17 +1729,19 @@
         const T = timeRemainingYears(opt.expiresAt);
         const value = blackScholesPrice(opt.optionType, S, opt.strike, T, RISK_FREE_RATE, OPTION_VOLATILITY[opt.assetType]);
         const proceeds = value * opt.quantity;
+        const realizedPL = realizedGain(opt.premiumPaid, value, opt.quantity);
 
         paperState.options = paperState.options.filter(o => o.id !== id);
         paperState.cash += proceeds;
+        paperState.realizedPL += realizedPL;
         paperState.history.push({
           time: Date.now(), action: 'sell-option', type: opt.assetType, symbol: opt.symbol,
-          quantity: opt.quantity, price: value
+          quantity: opt.quantity, price: value, realizedPL
         });
 
         savePaperState();
         renderPaperAll();
-        statusEl.textContent = `Closed ${opt.quantity} ${opt.symbol} $${opt.strike} ${opt.optionType} at ${fmtUsd(value)} each.`;
+        statusEl.textContent = `Closed ${opt.quantity} ${opt.symbol} $${opt.strike} ${opt.optionType} at ${fmtUsd(value)} each (${realizedPL >= 0 ? '+' : ''}${fmtUsd(realizedPL)} realized).`;
         statusEl.className = 'status';
       } catch (err) {
         statusEl.textContent = "Couldn't close position: " + err.message;
