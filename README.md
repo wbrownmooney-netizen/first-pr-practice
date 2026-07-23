@@ -118,11 +118,14 @@ each other. Qualifying rows also get a **MOVER** badge and a persistent
 amber tint in the main crypto/stock tables, and (with live alerts on)
 a notification the moment a symbol first qualifies. This is explicitly
 not a prediction that anything will actually reverse — most beaten-down
-assets stay beaten down — and definitely not investment advice. Stock
-movers need a Twelve Data key (for price history), same as stock
-trend/accuracy elsewhere on the page. The underlying `isNearLow` check
-lives in `signals.js`, tested in `test.html` alongside the rest of the
-signal logic.
+assets stay beaten down — and definitely not investment advice. Each
+mover also shows its **historical accuracy** — the same backtested
+figure as the Crypto/Stocks tables, i.e. how often that specific trend
+signal has been right in the past, not a promise about what happens
+next. Stock movers need a Twelve Data key (for price history), same as
+stock trend/accuracy elsewhere on the page. The underlying `isNearLow`
+check lives in `signals.js`, tested in `test.html` alongside the rest of
+the signal logic.
 
 The dashboard is aware of your [paper trading](#paper-trading-simulator)
 holdings (read from the same browser's localStorage — no extra setup):
