@@ -33,12 +33,17 @@ metadata and icon; `sw.js` is a minimal service worker that caches only
 this site's own static files (HTML/JS/manifest/icon) for basic offline
 loading — it never touches CoinGecko, Finnhub, Twelve Data, news APIs,
 or the charting CDN, so it can't ever serve stale live prices or
-headlines. `icon.svg` is a hand-drawn SVG (no image-generation tooling
-was available to produce a raster PNG), which works well for Android/
-Chrome install icons; iOS Safari's home-screen icon support for SVG is
-inconsistent across versions, so it may fall back to a screenshot-based
-icon there instead — a fine, non-broken degrade, just not a custom icon
-on older iOS.
+headlines. `icon.svg` is the original hand-drawn source icon; `icon-192.png`
+and `icon-512.png` are real raster PNGs generated from it (a pure-Python
+PNG encoder, hand-rasterizing the same candlestick shapes — no image
+editor or library involved). This correction exists because the SVG-only
+version turned out not to actually work: live-testing on desktop Chrome
+showed the `beforeinstallprompt` event never fired despite the manifest,
+icon, and service worker all technically passing validation — Chrome's
+real install-eligibility check has an unwritten preference for a raster
+icon that the spec itself doesn't require. The manifest now lists PNGs
+first (both `any` and `maskable` purpose) with the SVG kept as a
+fallback entry.
 
 ## Crypto & stocks dashboard
 
