@@ -269,10 +269,14 @@
         Coins or watchlist stocks currently near their recent low
         (within 10% for crypto, 5% for stocks) <em>with</em> an upward
         trend signal &mdash; a naive "possible bounce" heuristic
-        combining two already-naive signals from below. Most beaten-down
-        assets stay beaten down; this is not a prediction of a reversal,
-        and definitely not investment advice. Stocks only show up here
-        with a Twelve Data key entered (needed for their price history).
+        combining two already-naive signals from below. "Historical
+        accuracy" is how often that same trend signal has been right in
+        the past (same figure as the Crypto/Stocks tables below) &mdash;
+        a measured track record, not a promise about what happens next.
+        Most beaten-down assets stay beaten down; this is not a
+        prediction of a reversal, and definitely not investment advice.
+        Stocks only show up here with a Twelve Data key entered (needed
+        for their price history).
       </p>
       <table>
         <thead>
@@ -281,10 +285,11 @@
             <th class="num">Price</th>
             <th class="num">Above recent low</th>
             <th class="num">Trend</th>
+            <th class="num" title="How often this same trend signal has been right in the recent past">Historical accuracy</th>
           </tr>
         </thead>
         <tbody id="movers-rows">
-          <tr><td colspan="4" class="status">Loading&hellip;</td></tr>
+          <tr><td colspan="5" class="status">Loading&hellip;</td></tr>
         </tbody>
       </table>
     </section>
@@ -1180,14 +1185,14 @@
       const tbody = document.getElementById('movers-rows');
       const cryptoMovers = cryptoData.filter(c => c.isMover).map(c => ({
         label: `${c.coin.name} (${c.coin.symbol.toUpperCase()})`,
-        price: c.coin.current_price, pct: c.pctAboveLow, trend: c.trend
+        price: c.coin.current_price, pct: c.pctAboveLow, trend: c.trend, backtest: c.backtest
       }));
       const stockMovers = stockData.filter(s => s.isMover).map(s => ({
-        label: s.symbol, price: s.price, pct: s.pctAboveLow, trend: s.trend
+        label: s.symbol, price: s.price, pct: s.pctAboveLow, trend: s.trend, backtest: s.backtest
       }));
       const movers = [...cryptoMovers, ...stockMovers];
       if (movers.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="status">No potential movers right now.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" class="status">No potential movers right now.</td></tr>';
         return;
       }
       tbody.innerHTML = movers.map(m => `
@@ -1196,6 +1201,7 @@
           <td class="num">${fmtUsd(m.price)}</td>
           <td class="num">${m.pct != null ? m.pct.toFixed(1) + '%' : 'n/a'}</td>
           <td class="num">${trendBadge(m.trend)}</td>
+          <td class="num">${accuracyLabel(m.backtest)}</td>
         </tr>`).join('');
     }
 
