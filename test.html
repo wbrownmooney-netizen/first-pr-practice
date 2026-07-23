@@ -57,7 +57,7 @@
     <h1>Signal logic tests</h1>
     <p>Checks <code>predictTrend</code>, <code>backtestSignal</code>, and
       <code>isNearLow</code> from <code>signals.js</code>,
-      <code>buyPosition</code>/<code>sellPosition</code>
+      <code>buyPosition</code>/<code>sellPosition</code>/<code>realizedGain</code>
       from <code>portfolio.js</code>, and <code>blackScholesPrice</code> from
       <code>options.js</code>, against known inputs and outputs.</p>
     <p id="summary"></p>
@@ -163,6 +163,23 @@
 
     test('sellPosition: selling with no position throws', () => {
       assertThrows(() => sellPosition(null, 1), 'sell');
+    });
+
+    test('realizedGain: profit when exit price is above cost basis', () => {
+      // bought (or opened) at a 150 cost basis, sold at 180, x1 -> +30
+      assertEqual(realizedGain(150, 180, 1), 30, 'realized gain');
+    });
+
+    test('realizedGain: loss when exit price is below cost basis', () => {
+      assertEqual(realizedGain(150, 120, 1), -30, 'realized gain');
+    });
+
+    test('realizedGain: scales with quantity', () => {
+      assertEqual(realizedGain(100, 110, 5), 50, 'realized gain');
+    });
+
+    test('realizedGain: zero when exit price equals cost basis', () => {
+      assertEqual(realizedGain(100, 100, 3), 0, 'realized gain');
     });
 
     test('blackScholesPrice: matches known textbook reference values', () => {

@@ -7,6 +7,8 @@ A small practice repository for learning the GitHub pull request workflow.
 This repo exists so you can practice the full loop of making a change,
 opening a pull request, and merging it — without any risk to a real project.
 
+Licensed under [MIT](LICENSE).
+
 ## The app
 
 `index.html` is a tiny standalone web app — a "PRs Shipped" counter that
@@ -222,6 +224,14 @@ The cost-basis math (`buyPosition`/`sellPosition`) lives in `portfolio.js`,
 shared by the page and by `test.html`, which now also covers it: opening a
 position, weighted-average cost across uneven buy sizes, partial sells,
 and selling more than you hold (which should fail).
+
+A **Realized P/L (all-time)** figure sits next to cash/portfolio value,
+tracking actual locked-in profit or loss from every sell and closed
+option, computed via `realizedGain(costBasis, exitPrice, quantity)` (also
+in `portfolio.js`, also tested). It only counts what you've actually
+sold — an open, unsold position's paper gains don't show up here until
+you close it. Each sell/close in the Trade History table shows its own
+realized P/L too.
 
 ### Options (simulated)
 
