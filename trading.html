@@ -359,15 +359,50 @@
           prices. It's a simple statistics calculation, not a prediction
           from an expert.</li>
         <li><strong>Accuracy</strong> &mdash; if you'd trusted that same
-          guess in the past, how often would it have been right? A number
-          near 50% means "no better than a coin flip." Higher doesn't mean
-          reliable going forward &mdash; it's a small, recent sample.</li>
+          guess in the past, how often would it have been right? Every
+          table labels this against a coin-flip baseline instead of just
+          showing the raw percentage &mdash; see below for why that
+          matters.</li>
       </ul>
       <p class="hint">Use the <strong>Trending up</strong> / <strong>Trending down</strong>
         buttons above each table to filter the list down to whatever's
         currently leaning that direction. Nothing here tells you what to
         buy or sell &mdash; it's meant for learning how these signals
         behave, not for making real decisions.</p>
+      <details class="edu-block">
+        <summary>Why does a table say "63% (8 tries)" isn't meaningful?</summary>
+        <div class="edu-content">
+          <p>
+            Flip a fair coin 8 times and you won't always get exactly 4
+            heads &mdash; sometimes you'll get 5 or 6, purely by chance.
+            The fewer times you flip, the more a lucky streak can look
+            like a pattern. The same is true here: with only 8 backtested
+            tries, getting 5 right (63%) is barely more than plain random
+            guessing would produce, even if the underlying signal has
+            zero real predictive power.
+          </p>
+          <p>
+            Each accuracy figure is checked against that coin-flip
+            baseline using a rough standard-error calculation:
+            <code>sqrt(0.25 / trials)</code>. If the accuracy is within
+            about one standard error of 50%, it's labeled
+            <strong>"not statistically different from a coin flip"</strong>
+            &mdash; which, on this page, is most of the time. A wider gap
+            gets called <strong>"a weak signal"</strong>, or rarely
+            <strong>"unusual for a coin flip"</strong> &mdash; but even a
+            wide gap on a small, recent sample is not proof of a real,
+            repeatable edge.
+          </p>
+          <p class="hint">
+            This is a simplification, not a textbook significance test
+            &mdash; backtest trials come from overlapping windows on the
+            same price series, so they aren't fully independent the way
+            the math technically assumes. It's meant to honestly catch
+            the common case (small numbers are noisy), not to make a
+            rigorous statistical claim.
+          </p>
+        </div>
+      </details>
     </section>
 
     <section id="crypto-section">
@@ -734,9 +769,12 @@
       if (!result || result.trials < 5) return '<span class="flat">not enough data yet</span>';
       const pct = (result.accuracy * 100).toFixed(0);
       const cls = result.accuracy >= 0.5 ? 'up' : 'down';
-      const plain = result.accuracy >= 0.5
-        ? 'slightly better than a coin flip'
-        : 'no better than a coin flip';
+      const sig = accuracySignificance(result.accuracy, result.trials);
+      const plain = sig === 'notable'
+        ? (result.accuracy >= 0.5 ? 'unusual for a coin flip, but still one small sample' : 'unusually bad for a coin flip, still one small sample')
+        : sig === 'weak'
+          ? 'a weak signal — easily could be noise'
+          : 'not statistically different from a coin flip';
       return `<span class="${cls}">${pct}%</span> <span class="hint">(${result.trials} tries, ${plain})</span>`;
     }
 

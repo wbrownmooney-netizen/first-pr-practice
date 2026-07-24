@@ -55,8 +55,9 @@
 <body>
   <div class="wrap">
     <h1>Signal logic tests</h1>
-    <p>Checks <code>predictTrend</code>, <code>backtestSignal</code>, and
-      <code>isNearLow</code> from <code>signals.js</code>,
+    <p>Checks <code>predictTrend</code>, <code>backtestSignal</code>,
+      <code>accuracySignificance</code>, and <code>isNearLow</code> from
+      <code>signals.js</code>,
       <code>buyPosition</code>/<code>sellPosition</code>/<code>realizedGain</code>
       from <code>portfolio.js</code>, and <code>blackScholesPrice</code>/
       <code>decomposeOptionChange</code> from <code>options.js</code>,
@@ -118,6 +119,24 @@
 
     test('backtestSignal: window bigger than data -> null', () => {
       assertEqual(backtestSignal([1, 2, 3], 5), null, 'backtest');
+    });
+
+    test('accuracySignificance: too few trials -> null', () => {
+      assertEqual(accuracySignificance(0.8, 4), null, 'significance');
+    });
+
+    test('accuracySignificance: exactly 50% is never significant', () => {
+      assertEqual(accuracySignificance(0.5, 10), 'not-significant', 'significance');
+    });
+
+    test('accuracySignificance: small sample stays "not-significant" even at 90%', () => {
+      // se = sqrt(0.25/5) ~= 0.2236, z = 0.4/0.2236 ~= 1.79 -> weak, not notable
+      assertEqual(accuracySignificance(0.9, 5), 'weak', 'significance');
+    });
+
+    test('accuracySignificance: large sample with a real gap is "notable"', () => {
+      // se = sqrt(0.25/100) = 0.05, z = 0.3/0.05 = 6
+      assertEqual(accuracySignificance(0.8, 100), 'notable', 'significance');
     });
 
     test('isNearLow: current price close to the series minimum -> true', () => {
