@@ -147,6 +147,9 @@
   .edu-content dl { margin: 0.5rem 0; }
   .edu-content dt { font-weight: 600; margin-top: 0.6rem; }
   .edu-content dd { margin: 0.15rem 0 0; color: var(--muted); }
+  #glossary-section dl { margin: 0.5rem 0 1.25rem; font-size: 0.9rem; line-height: 1.5; }
+  #glossary-section dt { font-weight: 600; margin-top: 0.6rem; }
+  #glossary-section dd { margin: 0.15rem 0 0; color: var(--muted); }
   .edu-example {
     background: var(--bg);
     border: 1px solid var(--border);
@@ -288,6 +291,7 @@
       <a href="#chart-section">Chart</a>
       <a href="#news-section">News</a>
       <a href="#paper-trading-section">Paper Trading</a>
+      <a href="#glossary-section">Glossary</a>
     </nav>
 
     <div class="disclaimer">
@@ -754,6 +758,101 @@
       <div id="behavior-insight" class="disclaimer" style="background: var(--card); border-color: var(--border); color: var(--text);">
         <p class="hint" style="margin:0;">Close at least 3 winning and 3 losing trades to see a pattern here.</p>
       </div>
+    </section>
+
+    <section id="glossary-section">
+      <h2>Glossary</h2>
+      <p class="hint" style="margin-top:0;">Every term below is explained
+        in context somewhere on this page (in the Options section, the
+        "New here?" box, or the Paper Trading panels) &mdash; this is
+        just all of it in one place, grouped by topic, for whenever you
+        land partway down the page.</p>
+
+      <h3 style="font-size: 0.95rem; margin: 1.25rem 0 0.75rem;">Options</h3>
+      <dl>
+        <dt>Call</dt>
+        <dd>A contract giving the right, but not the obligation, to buy
+          the underlying at the strike price on or before expiration.
+          Buy a call when you expect the price to rise.</dd>
+        <dt>Delta</dt>
+        <dd>How much an option's value moves per $1 move in the
+          underlying price. Labeled on the "Why did this change?"
+          breakdown for each open option position.</dd>
+        <dt>Expiration</dt>
+        <dd>The date after which an option contract is worthless if it
+          hasn't paid off.</dd>
+        <dt>In the money / out of the money</dt>
+        <dd>A call is "in the money" when the underlying price is above
+          the strike (and "out of the money" below it); a put is the
+          reverse. An option that's out of the money at expiration is
+          worth exactly $0.</dd>
+        <dt>Premium</dt>
+        <dd>The upfront cost of buying an option contract. As a buyer,
+          this is also your maximum possible loss, no matter how wrong
+          the bet turns out to be.</dd>
+        <dt>Put</dt>
+        <dd>A contract giving the right, but not the obligation, to sell
+          the underlying at the strike price on or before expiration.
+          Buy a put when you expect the price to fall.</dd>
+        <dt>Strike price</dt>
+        <dd>The fixed price at which an option lets you buy (call) or
+          sell (put) the underlying, regardless of where it's actually
+          trading.</dd>
+        <dt>Theta</dt>
+        <dd>How much an option's value decays per day that passes, all
+          else equal. Labeled on the "Why did this change?" breakdown for
+          each open option position.</dd>
+      </dl>
+
+      <h3 style="font-size: 0.95rem; margin: 1.25rem 0 0.75rem;">Portfolio &amp; risk</h3>
+      <dl>
+        <dt>Concentration</dt>
+        <dd>How much of your total portfolio value sits in one position.
+          This app flags anything over 25% as worth a second look &mdash;
+          informational only, not a hard limit on what you can trade.</dd>
+        <dt>Cost basis</dt>
+        <dd>The average price you paid for a position &mdash; a weighted
+          average if you bought at different prices over time.</dd>
+        <dt>Disposition effect</dt>
+        <dd>A well-documented behavioral tendency to sell winning
+          positions quickly while holding losing ones, hoping they
+          recover. The "Trading patterns" panel checks your own trade
+          history for this.</dd>
+        <dt>Realized P/L</dt>
+        <dd>Profit or loss actually locked in by selling a position or
+          closing an option. Unsold positions don't count here until you
+          actually close them.</dd>
+        <dt>Unrealized P/L</dt>
+        <dd>The paper gain or loss on a position you still hold, based on
+          its current price. Can change &mdash; or vanish entirely &mdash;
+          before you ever sell.</dd>
+      </dl>
+
+      <h3 style="font-size: 0.95rem; margin: 1.25rem 0 0.75rem;">Signals &amp; statistics</h3>
+      <dl>
+        <dt>Backtested accuracy</dt>
+        <dd>How often the trend signal would have been right if you'd
+          trusted it over recent history. Not a guarantee about future
+          performance, and often not statistically meaningful &mdash; see
+          "statistically significant" below.</dd>
+        <dt>Potential mover</dt>
+        <dd>A coin or stock currently near its recent low (within 10% for
+          crypto, 5% for stocks) while also showing an upward trend
+          signal &mdash; a naive "possible bounce" heuristic layering two
+          already-naive signals on top of each other, not a prediction
+          that anything will actually reverse.</dd>
+        <dt>Statistically significant</dt>
+        <dd>Whether a result (like a backtested accuracy) is different
+          enough from pure chance &mdash; 50%, a coin flip &mdash; to mean
+          anything, given how few times it's actually been tested. Most
+          small-sample accuracy figures on this page are labeled "not
+          statistically different from a coin flip" for exactly this
+          reason.</dd>
+        <dt>Trend</dt>
+        <dd>A guess at which way a price is currently leaning (up, down,
+          or flat), based on a simple statistics calculation over recent
+          prices &mdash; not a forecast from an expert.</dd>
+      </dl>
     </section>
   </div>
 
