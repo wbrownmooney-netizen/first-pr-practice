@@ -259,6 +259,16 @@ sold — an open, unsold position's paper gains don't show up here until
 you close it. Each sell/close in the Trade History table shows its own
 realized P/L too.
 
+Every buy also gets a **position-sizing note**: "(~6% of your
+portfolio)" normally, or a highlighted "that's a large concentration in
+one symbol" warning once a single position crosses 25% of total
+portfolio value (`CONCENTRATION_WARN_PCT` in `trading.html`, an
+arbitrary, disclosed line same as the near-low thresholds used
+elsewhere). It's informational only — nothing here blocks the trade —
+meant to build the habit of noticing concentration risk before it's a
+problem, since nothing in a paper simulator naturally teaches that the
+way a real, painful loss would.
+
 ### Options (simulated)
 
 An expandable **"New to options? Calls vs. puts, explained"** panel sits
