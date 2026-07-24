@@ -337,6 +337,18 @@ education panel above the order form previews those names before you
 ever open a position, so the jargon on a live breakdown isn't the first
 time you've seen it.
 
+## Glossary
+
+A **Glossary** section at the bottom of `trading.html` (also in the
+sticky jump-nav) collects every term introduced piecemeal elsewhere on
+the page — grouped into Options, Portfolio & risk, and Signals &
+statistics, each alphabetical within its group — for anyone who lands
+partway down the page without having opened every education panel in
+order. It's pure static content: no new logic, just consolidation, kept
+consistent with how each term is actually defined and used elsewhere on
+the page rather than introducing a second, slightly-different
+explanation.
+
 ## Getting started
 
 1. Clone the repo: `git clone https://github.com/wbrownmooney-netizen/first-pr-practice.git`
