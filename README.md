@@ -269,6 +269,23 @@ meant to build the habit of noticing concentration risk before it's a
 problem, since nothing in a paper simulator naturally teaches that the
 way a real, painful loss would.
 
+A **Trading patterns** panel below the trade history mines your own
+closed trades for a well-documented behavioral-finance tendency: the
+**disposition effect**, the instinct to sell winners quickly but hold
+losers hoping they recover. `holdingTimeBias()` (in `portfolio.js`,
+tested) compares the average holding time of winning vs. losing closed
+trades — spot or option — and needs at least 3 of each before it says
+anything, so a couple of trades can't be read as a "pattern." The
+wording adapts to whatever the data actually shows (the effect, its
+opposite, or no strong pattern either way) rather than assuming
+everyone exhibits the classic version. This is the first feature on the
+page that reflects the user's *own* behavior back at them instead of
+explaining a static concept — holding time is measured from when a
+position was first opened (not per-lot, since this simulator uses
+weighted-average cost rather than FIFO/LIFO lots), and it never claims
+holding longer or shorter was actually the *right* call in any specific
+trade, only that a pattern exists.
+
 ### Options (simulated)
 
 An expandable **"New to options? Calls vs. puts, explained"** panel sits

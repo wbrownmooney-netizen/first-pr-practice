@@ -749,6 +749,11 @@
           </tbody>
         </table>
       </div>
+
+      <h3 style="font-size: 0.95rem; margin: 1.25rem 0 0.75rem;">Trading patterns</h3>
+      <div id="behavior-insight" class="disclaimer" style="background: var(--card); border-color: var(--border); color: var(--text);">
+        <p class="hint" style="margin:0;">Close at least 3 winning and 3 losing trades to see a pattern here.</p>
+      </div>
     </section>
   </div>
 
@@ -1794,11 +1799,64 @@
       }).join('');
     }
 
+    // A trade held under 2 days reads in hours; anything longer reads in
+    // days, so the insight text stays readable at either scale.
+    function fmtHoldDuration(ms) {
+      const hours = ms / (1000 * 60 * 60);
+      if (hours < 48) return hours.toFixed(1) + (hours === 1 ? ' hour' : ' hours');
+      const days = hours / 24;
+      return days.toFixed(1) + (days === 1 ? ' day' : ' days');
+    }
+
+    // Renders the disposition-effect insight (holdingTimeBias(), in
+    // portfolio.js) in plain language — adapting the wording to whichever
+    // direction the data actually shows, rather than assuming everyone
+    // exhibits the classic "sell winners early, hold losers" pattern.
+    function renderBehaviorInsight() {
+      const el = document.getElementById('behavior-insight');
+      if (!el) return;
+      const result = holdingTimeBias(paperState.history);
+      if (!result) {
+        el.innerHTML = '<p class="hint" style="margin:0;">Close at least 3 winning and 3 losing trades to see a pattern here.</p>';
+        return;
+      }
+      const ratio = result.avgLoserMs / result.avgWinnerMs;
+      let verdict;
+      if (ratio >= 1.5) {
+        verdict = `You've held losing positions about ${ratio.toFixed(1)}&times; longer than winning ones on
+          average (${fmtHoldDuration(result.avgLoserMs)} vs. ${fmtHoldDuration(result.avgWinnerMs)}).
+          That's a well-known pattern called the <strong>disposition
+          effect</strong>: the instinct to lock in a gain quickly but hold
+          onto a loss hoping it recovers. It's not automatically wrong,
+          but it's worth noticing &mdash; ask yourself whether you'd still
+          buy each losing position today, at today's price.`;
+      } else if (ratio <= 0.667) {
+        verdict = `You've actually held winning positions about
+          ${(1 / ratio).toFixed(1)}&times; longer than losing ones on average
+          (${fmtHoldDuration(result.avgWinnerMs)} vs. ${fmtHoldDuration(result.avgLoserMs)})
+          &mdash; the opposite of the common <strong>disposition
+          effect</strong> pattern (selling winners early, holding losers
+          hoping they recover). Worth noticing either way, not a verdict
+          on whether it's the right call.`;
+      } else {
+        verdict = `Your winning and losing positions have been held for
+          about the same amount of time on average (${fmtHoldDuration(result.avgWinnerMs)}
+          vs. ${fmtHoldDuration(result.avgLoserMs)}) &mdash; no strong
+          holding-time pattern either way.`;
+      }
+      el.innerHTML = `<p style="margin:0 0 0.4rem;">${verdict}</p>
+        <p class="hint" style="margin:0;">Based on ${result.winners} winning and ${result.losers}
+          losing closed trade(s) so far. This only measures how long you
+          held a position, not whether holding longer or shorter was
+          actually the better call in any specific case.</p>`;
+    }
+
     function renderPaperAll() {
       renderPaperBalances();
       renderPaperHoldings();
       renderOptions();
       renderPaperHistory();
+      renderBehaviorInsight();
     }
 
     async function refreshPaperPrices() {
@@ -1851,6 +1909,7 @@
         const posKey = paperPositionKey(type, normSymbol);
         const cost = price * quantity;
         let realizedPL = null;
+        let heldMs = null;
 
         if (action === 'buy') {
           if (cost > paperState.cash) {
@@ -1858,7 +1917,10 @@
             statusEl.className = 'status error';
             return;
           }
+          const wasEmpty = !paperState.positions[posKey] || paperState.positions[posKey].quantity === 0;
+          const openedAt = wasEmpty ? Date.now() : paperState.positions[posKey].openedAt;
           paperState.positions[posKey] = buyPosition(paperState.positions[posKey], quantity, price);
+          paperState.positions[posKey].openedAt = openedAt;
           paperState.cash -= cost;
         } else {
           const existing = paperState.positions[posKey];
@@ -1868,12 +1930,17 @@
             return;
           }
           realizedPL = realizedGain(existing.avgCost, price, quantity);
+          heldMs = existing.openedAt != null ? Date.now() - existing.openedAt : null;
           paperState.realizedPL += realizedPL;
           paperState.positions[posKey] = sellPosition(existing, quantity);
+          // Position measures holding time from when it was first opened,
+          // not per-lot (this simulator uses weighted-average cost, not
+          // FIFO/LIFO lots) — reset only once fully closed.
+          paperState.positions[posKey].openedAt = paperState.positions[posKey].quantity > 0 ? existing.openedAt : null;
           paperState.cash += cost;
         }
 
-        paperState.history.push({ time: Date.now(), action, type, symbol: normSymbol, quantity, price, realizedPL });
+        paperState.history.push({ time: Date.now(), action, type, symbol: normSymbol, quantity, price, realizedPL, heldMs });
         savePaperState();
         renderPaperAll();
         const plNote = realizedPL != null ? ` (${realizedPL >= 0 ? '+' : ''}${fmtUsd(realizedPL)} realized)` : '';
@@ -1984,7 +2051,7 @@
         paperState.realizedPL += realizedPL;
         paperState.history.push({
           time: Date.now(), action: 'sell-option', type: opt.assetType, symbol: opt.symbol,
-          quantity: opt.quantity, price: value, realizedPL
+          quantity: opt.quantity, price: value, realizedPL, heldMs: Date.now() - opt.openedAt
         });
 
         savePaperState();
