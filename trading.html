@@ -354,9 +354,12 @@
       <p class="hint" style="margin-top:0;">
         Finnhub's free tier doesn't offer a market-wide "top movers" feed
         &mdash; that needs a paid plan. Instead, the watchlist below is
-        pre-filled with a default set of well-known large-cap stocks; add
-        your key(s) and scan it. Edit the list to whatever symbols you
-        actually care about.
+        pre-filled with a default set of 20 well-known large-cap stocks
+        across sectors; add your key(s) and scan it. Edit the list to
+        whatever symbols you actually care about &mdash; more symbols
+        also means more chances for the Potential Movers section further
+        down to actually find something, since it can only flag stocks
+        that are in this list to begin with.
       </p>
       <p class="hint" style="margin-top:0;">
         <strong>Trend and accuracy need a second, optional key.</strong>
@@ -369,7 +372,9 @@
         work fine via Finnhub &mdash; you'll just see "add Twelve Data
         key" in the trend/accuracy columns instead. Twelve Data's free
         tier has a tight per-minute limit, so scans are deliberately slow
-        when this key is present.
+        when this key is present &mdash; with the default 20-symbol
+        watchlist, expect a full scan to take roughly 2-3 minutes. Trim
+        the list if that's too slow for you.
       </p>
       <div class="row-inline">
         <input id="finnhub-key" type="password" placeholder="Your free Finnhub API key" autocomplete="off">
@@ -1757,12 +1762,21 @@
     });
 
     // No free "top movers" feed exists for stocks, so we default the
-    // watchlist to a handful of well-known large-caps across sectors
-    // instead — a reasonable starting point, not a live market screener.
-    // Kept short (5, not 10+) because Twelve Data's free tier's tight
-    // per-minute limit makes each additional symbol noticeably slower
-    // to scan once a Twelve Data key is set.
-    const DEFAULT_STOCK_WATCHLIST = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA'];
+    // watchlist to 20 well-known large-caps across sectors instead — a
+    // reasonable starting point, not a live market screener. This was
+    // trimmed to 5 earlier specifically to keep scans fast once a
+    // Twelve Data key is set (its free tier's rate limit adds ~8s per
+    // symbol) — back to 20 by request, accepting that a full scan with
+    // a Twelve Data key now takes noticeably longer (roughly 2-3
+    // minutes) in exchange for broader coverage, including for the
+    // Potential Movers section below, which can only flag a stock as a
+    // mover if it's actually in this list.
+    const DEFAULT_STOCK_WATCHLIST = [
+      'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA',
+      'META', 'TSLA', 'JPM', 'V', 'UNH',
+      'XOM', 'JNJ', 'WMT', 'PG', 'MA',
+      'HD', 'CVX', 'KO', 'PEP', 'DIS'
+    ];
 
     const savedKey = localStorage.getItem('finnhubKey');
     if (savedKey) document.getElementById('finnhub-key').value = savedKey;

@@ -88,13 +88,18 @@ squeezing its columns into unreadable, wrapped cells — found and fixed
 by actually testing the live site at a mobile viewport width, since a
 few of the wider tables (Holdings, Options) were genuinely overflowing
 their card before this. Stocks come
-from a comma-separated watchlist — pre-filled with a default set of 5
-well-known large-cap symbols so there's something to see immediately, and
-freely editable to whatever you actually want to track. (Neither Finnhub
-nor Twelve Data's free tiers offer a market-wide "top movers" feed, so
-this default list stands in for a real screener — combine it with the
-Trending up/down filters to see which of those symbols are currently
-trending.)
+from a comma-separated watchlist — pre-filled with a default set of 20
+well-known large-cap symbols across sectors so there's something to see
+immediately, and freely editable to whatever you actually want to track.
+(Neither Finnhub nor Twelve Data's free tiers offer a market-wide "top
+movers" feed, so this default list stands in for a real screener —
+combine it with the Trending up/down filters to see which of those
+symbols are currently trending.) This was trimmed down to 5 for a while
+to keep scans fast, then reverted back to 20: with a Twelve Data key set,
+a full 20-symbol scan takes roughly 2-3 minutes (Twelve Data's free-tier
+rate limit adds ~8s per symbol) — worth trimming the list yourself if
+that's too slow, but broader coverage also means the Potential Movers
+section below has more to actually search through.
 
 Stock requests are deliberately throttled: symbols are fetched **one at a
 time** (not all at once), each symbol's quote and history requests go out
