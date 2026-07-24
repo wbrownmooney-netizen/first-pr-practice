@@ -261,6 +261,7 @@
   .hint a { color: var(--accent); }
   .status { font-size: 0.85rem; color: var(--muted); margin-top: 0.5rem; }
   .status.error { color: var(--down); }
+  .status.warn { color: var(--mover-accent); }
   .news-list { list-style: none; margin: 0; padding: 0; }
   .news-list li { padding: 0.6rem 0; border-bottom: 1px solid var(--border); }
   .news-list li:last-child { border-bottom: none; }
@@ -1530,6 +1531,10 @@
     // Finnhub key field for stock lookups.
     const STARTING_CASH = 10000;
     const PAPER_STATE_KEY = 'paperPortfolio';
+    // Arbitrary, disclosed threshold for flagging a single position as a
+    // large concentration of the portfolio — not a rule, just a nudge
+    // toward thinking about position sizing before confirming a trade.
+    const CONCENTRATION_WARN_PCT = 25;
 
     function loadPaperState() {
       try {
@@ -1650,20 +1655,28 @@
       );
     }
 
-    function renderPaperBalances() {
-      document.getElementById('cash-value').textContent = fmtUsd(paperState.cash);
+    // Total portfolio value using cost basis for anything without a
+    // cached live price yet (e.g. right after a trade, before the next
+    // price refresh) — otherwise a freshly-opened position would look
+    // like it vanished from the total until prices next refresh.
+    function currentPortfolioValue() {
       let holdingsValue = 0;
       for (const key in paperState.positions) {
         const pos = paperState.positions[key];
         const price = paperLivePrices[key];
-        if (price != null) holdingsValue += price * pos.quantity;
+        holdingsValue += (price != null ? price : pos.avgCost) * pos.quantity;
       }
       let optionsValue = 0;
       for (const opt of paperState.options) {
         const value = optionCurrentValue(opt);
-        if (value != null) optionsValue += value * opt.quantity;
+        optionsValue += (value != null ? value : opt.premiumPaid) * opt.quantity;
       }
-      document.getElementById('total-value').textContent = fmtUsd(paperState.cash + holdingsValue + optionsValue);
+      return paperState.cash + holdingsValue + optionsValue;
+    }
+
+    function renderPaperBalances() {
+      document.getElementById('cash-value').textContent = fmtUsd(paperState.cash);
+      document.getElementById('total-value').textContent = fmtUsd(currentPortfolioValue());
 
       const realizedEl = document.getElementById('realized-pl-value');
       realizedEl.textContent = (paperState.realizedPL >= 0 ? '+' : '') + fmtUsd(paperState.realizedPL);
@@ -1800,6 +1813,22 @@
       renderPaperAll();
     }
 
+    // Position size relative to total portfolio value, checked right
+    // after a trade closes — an informational nudge toward
+    // position-sizing discipline, not a limit on what you can actually
+    // do. The 25% line is arbitrary and disclosed, same spirit as the
+    // near-low thresholds used for Potential Movers.
+    function concentrationNote(positionValue, portfolioValue) {
+      if (!(portfolioValue > 0)) return { text: '', warn: false };
+      const pct = (positionValue / portfolioValue) * 100;
+      const pctText = pct.toFixed(pct < 10 ? 1 : 0);
+      const warn = pct >= CONCENTRATION_WARN_PCT;
+      const text = warn
+        ? ` This position is now ~${pctText}% of your portfolio — that's a large concentration in one symbol.`
+        : ` (~${pctText}% of your portfolio.)`;
+      return { text, warn };
+    }
+
     async function placePaperTrade(action) {
       const statusEl = document.getElementById('trade-status');
       const type = document.getElementById('asset-type').value;
@@ -1848,8 +1877,11 @@
         savePaperState();
         renderPaperAll();
         const plNote = realizedPL != null ? ` (${realizedPL >= 0 ? '+' : ''}${fmtUsd(realizedPL)} realized)` : '';
-        statusEl.textContent = `${action === 'buy' ? 'Bought' : 'Sold'} ${quantity} ${normSymbol} at ${fmtUsd(price)}${plNote}.`;
-        statusEl.className = 'status';
+        const sizing = action === 'buy'
+          ? concentrationNote(paperState.positions[posKey].quantity * price, currentPortfolioValue())
+          : { text: '', warn: false };
+        statusEl.textContent = `${action === 'buy' ? 'Bought' : 'Sold'} ${quantity} ${normSymbol} at ${fmtUsd(price)}${plNote}.${sizing.text}`;
+        statusEl.className = sizing.warn ? 'status warn' : 'status';
       } catch (err) {
         statusEl.textContent = "Couldn't place trade: " + err.message;
         statusEl.className = 'status error';
@@ -1923,8 +1955,9 @@
 
         savePaperState();
         renderPaperAll();
-        statusEl.textContent = `Bought ${quantity} ${normSymbol} $${strike} ${optionType} at ${fmtUsd(premium)} each.`;
-        statusEl.className = 'status';
+        const sizing = concentrationNote(totalCost, currentPortfolioValue());
+        statusEl.textContent = `Bought ${quantity} ${normSymbol} $${strike} ${optionType} at ${fmtUsd(premium)} each.${sizing.text}`;
+        statusEl.className = sizing.warn ? 'status warn' : 'status';
       } catch (err) {
         statusEl.textContent = "Couldn't place trade: " + err.message;
         statusEl.className = 'status error';
