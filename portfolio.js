@@ -29,3 +29,27 @@ function sellPosition(position, quantity) {
 function realizedGain(costBasis, exitPrice, quantity) {
   return (exitPrice - costBasis) * quantity;
 }
+
+// Compares average holding time of winning vs. losing closed trades, to
+// surface a well-documented behavioral-finance tendency (the
+// "disposition effect"): selling winners quickly while holding losers,
+// hoping they recover. Only looks at trade-history entries that carry
+// both a realizedPL and a heldMs (older saved state, and breakeven
+// trades where realizedPL is exactly 0, are excluded rather than
+// guessed at). Requires at least `minTrades` winners and losers before
+// saying anything — with less data than that, any average is mostly
+// noise, not a real pattern (same spirit as accuracySignificance() in
+// signals.js).
+function holdingTimeBias(history, minTrades = 3) {
+  const closed = history.filter(t => t.realizedPL != null && t.heldMs != null);
+  const winners = closed.filter(t => t.realizedPL > 0);
+  const losers = closed.filter(t => t.realizedPL < 0);
+  if (winners.length < minTrades || losers.length < minTrades) return null;
+  const avgMs = trades => trades.reduce((sum, t) => sum + t.heldMs, 0) / trades.length;
+  return {
+    avgWinnerMs: avgMs(winners),
+    avgLoserMs: avgMs(losers),
+    winners: winners.length,
+    losers: losers.length
+  };
+}

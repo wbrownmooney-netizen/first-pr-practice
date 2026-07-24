@@ -58,7 +58,7 @@
     <p>Checks <code>predictTrend</code>, <code>backtestSignal</code>,
       <code>accuracySignificance</code>, and <code>isNearLow</code> from
       <code>signals.js</code>,
-      <code>buyPosition</code>/<code>sellPosition</code>/<code>realizedGain</code>
+      <code>buyPosition</code>/<code>sellPosition</code>/<code>realizedGain</code>/<code>holdingTimeBias</code>
       from <code>portfolio.js</code>, and <code>blackScholesPrice</code>/
       <code>decomposeOptionChange</code> from <code>options.js</code>,
       against known inputs and outputs.</p>
@@ -200,6 +200,29 @@
 
     test('realizedGain: zero when exit price equals cost basis', () => {
       assertEqual(realizedGain(100, 100, 3), 0, 'realized gain');
+    });
+
+    test('holdingTimeBias: fewer than minTrades winners or losers -> null', () => {
+      const history = [
+        { realizedPL: 10, heldMs: 1000 }, { realizedPL: 10, heldMs: 1000 },
+        { realizedPL: -10, heldMs: 5000 }, { realizedPL: -10, heldMs: 5000 }, { realizedPL: -10, heldMs: 5000 }
+      ];
+      assertEqual(holdingTimeBias(history), null, 'holding bias');
+    });
+
+    test('holdingTimeBias: excludes breakeven trades and entries missing heldMs', () => {
+      const history = [
+        { realizedPL: 10, heldMs: 1000 }, { realizedPL: 10, heldMs: 3000 }, { realizedPL: 10, heldMs: 2000 },
+        { realizedPL: -10, heldMs: 5000 }, { realizedPL: -10, heldMs: 7000 }, { realizedPL: -10, heldMs: 6000 },
+        { realizedPL: 0, heldMs: 9000 }, // breakeven, excluded
+        { realizedPL: 10, heldMs: null }, // missing heldMs, excluded
+        { realizedPL: 10 } // missing heldMs entirely, excluded
+      ];
+      assertEqual(
+        holdingTimeBias(history),
+        { avgWinnerMs: 2000, avgLoserMs: 6000, winners: 3, losers: 3 },
+        'holding bias'
+      );
     });
 
     test('blackScholesPrice: matches known textbook reference values', () => {
