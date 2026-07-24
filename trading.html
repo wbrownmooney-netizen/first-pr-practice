@@ -1479,6 +1479,22 @@
       return blackScholesPrice(opt.optionType, S, opt.strike, T, RISK_FREE_RATE, OPTION_VOLATILITY[opt.assetType]);
     }
 
+    // Educational "why did this change?" breakdown for one option
+    // position, via options.js's decomposeOptionChange. Returns null if
+    // we don't have a live price yet, or if this position predates
+    // underlyingPriceAtOpen being recorded (older saved state).
+    function optionBreakdown(opt) {
+      if (opt.underlyingPriceAtOpen == null) return null;
+      const S = paperLivePrices[paperPositionKey(opt.assetType, opt.symbol)];
+      if (S == null) return null;
+      const T0 = (opt.expiresAt - opt.openedAt) / MS_PER_YEAR;
+      const T1 = timeRemainingYears(opt.expiresAt);
+      return decomposeOptionChange(
+        opt.optionType, opt.strike, RISK_FREE_RATE, OPTION_VOLATILITY[opt.assetType],
+        opt.underlyingPriceAtOpen, T0, S, T1
+      );
+    }
+
     function renderPaperBalances() {
       document.getElementById('cash-value').textContent = fmtUsd(paperState.cash);
       let holdingsValue = 0;
@@ -1547,6 +1563,34 @@
       }).join('');
     }
 
+    // Renders the "Why did this change?" explanation for one option
+    // position — plain text if we can't compute a breakdown yet (no
+    // live price cached, or the position predates underlyingPriceAtOpen
+    // being tracked), otherwise the time-decay/price-move/interaction
+    // split from optionBreakdown().
+    function optionBreakdownHtml(opt) {
+      const b = optionBreakdown(opt);
+      if (!b) {
+        return '<span class="hint">Refresh prices to see a breakdown of this position\'s value.</span>';
+      }
+      const S = paperLivePrices[paperPositionKey(opt.assetType, opt.symbol)];
+      const signed = n => (n >= 0 ? '+' : '') + fmtUsd(n);
+      const cls = n => (n >= 0 ? 'up' : 'down');
+      const totalPl = (b.endValue - b.startValue) * opt.quantity;
+      return `
+        <span class="hint">Started at ${fmtUsd(b.startValue)}/contract when ${escapeHtml(opt.symbol.toUpperCase())} was ${fmtUsd(opt.underlyingPriceAtOpen)}.</span><br>
+        <span class="${cls(b.timeDecay)}">Time decay: ${signed(b.timeDecay)}</span>
+        <span class="hint">(options lose value as expiration approaches, all else equal)</span><br>
+        <span class="${cls(b.priceMove)}">Price move: ${signed(b.priceMove)}</span>
+        <span class="hint">(${escapeHtml(opt.symbol.toUpperCase())} is now ${fmtUsd(S)})</span><br>
+        <span class="flat">Combined effect: ${signed(b.interaction)}</span>
+        <span class="hint">(these two don't add up perfectly on their own — this is the rest)</span><br>
+        <span class="hint">Now worth ${fmtUsd(b.endValue)}/contract —</span>
+        <span class="${cls(totalPl)}">${signed(totalPl)} total</span>
+        <span class="hint">across ${opt.quantity} contract(s).</span>
+      `;
+    }
+
     function renderOptions() {
       const tbody = document.getElementById('options-rows');
       if (paperState.options.length === 0) {
@@ -1568,6 +1612,16 @@
             <td class="num">${value != null ? fmtUsd(value) : 'n/a'}</td>
             <td class="num ${plClass}">${totalPl != null ? fmtUsd(totalPl) : 'n/a'}</td>
             <td class="num"><button class="ghost" data-close-option="${opt.id}">Close</button></td>
+          </tr>
+          <tr>
+            <td colspan="7" style="padding-top:0; border-bottom: none;">
+              <details>
+                <summary class="hint" style="cursor:pointer;">Why did this change?</summary>
+                <div class="hint" style="margin: 0.5rem 0 0.25rem; line-height: 1.8;">
+                  ${optionBreakdownHtml(opt)}
+                </div>
+              </details>
+            </td>
           </tr>`;
       }).join('');
     }
@@ -1702,6 +1756,7 @@
           strike,
           quantity,
           premiumPaid: premium,
+          underlyingPriceAtOpen: S,
           openedAt: Date.now(),
           expiresAt: Date.now() + days * 24 * 60 * 60 * 1000
         });

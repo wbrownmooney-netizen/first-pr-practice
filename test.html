@@ -58,8 +58,9 @@
     <p>Checks <code>predictTrend</code>, <code>backtestSignal</code>, and
       <code>isNearLow</code> from <code>signals.js</code>,
       <code>buyPosition</code>/<code>sellPosition</code>/<code>realizedGain</code>
-      from <code>portfolio.js</code>, and <code>blackScholesPrice</code> from
-      <code>options.js</code>, against known inputs and outputs.</p>
+      from <code>portfolio.js</code>, and <code>blackScholesPrice</code>/
+      <code>decomposeOptionChange</code> from <code>options.js</code>,
+      against known inputs and outputs.</p>
     <p id="summary"></p>
     <ul id="results"></ul>
   </div>
@@ -200,6 +201,26 @@
       assertEqual(blackScholesPrice('put', 80, 100, 0, 0, 0.5), 20, 'put intrinsic');
       assertEqual(blackScholesPrice('call', 90, 100, 0, 0, 0.5), 0, 'OTM call intrinsic');
       assertEqual(blackScholesPrice('put', 110, 100, 0, 0, 0.5), 0, 'OTM put intrinsic');
+    });
+
+    test('decomposeOptionChange: components sum exactly to the real value change', () => {
+      const d = decomposeOptionChange('call', 100, 0, 0.3, 100, 0.5, 110, 0.4);
+      assertApprox(d.startValue + d.timeDecay + d.priceMove + d.interaction, d.endValue, 1e-9, 'sum check');
+    });
+
+    test('decomposeOptionChange: call, underlying rises — matches known values', () => {
+      const d = decomposeOptionChange('call', 100, 0, 0.3, 100, 0.5, 110, 0.4);
+      assertApprox(d.startValue, 8.44704, 0.001, 'start');
+      assertApprox(d.endValue, 13.912832, 0.001, 'end');
+      assertApprox(d.timeDecay, -0.888942, 0.001, 'time decay');
+      assertApprox(d.priceMove, 6.298652, 0.001, 'price move');
+    });
+
+    test('decomposeOptionChange: put, underlying falls — value rises, time still decays', () => {
+      const d = decomposeOptionChange('put', 100, 0, 0.3, 100, 0.5, 90, 0.4);
+      assertApprox(d.timeDecay, -0.888942, 0.001, 'time decay');
+      assertApprox(d.priceMove, 5.542802, 0.001, 'price move');
+      if (!(d.timeDecay < 0)) throw new Error('time decay should be negative regardless of option type');
     });
 
     const resultsEl = document.getElementById('results');
