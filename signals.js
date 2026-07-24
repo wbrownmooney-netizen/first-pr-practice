@@ -36,6 +36,25 @@ function backtestSignal(prices, window) {
   return trials > 0 ? { accuracy: correct / trials, trials } : null;
 }
 
+// How far a backtested accuracy actually sits from pure chance (50%),
+// measured in standard errors under a coin-flip null hypothesis — i.e. a
+// rough one-sample z-test. This exists because a headline number like
+// "63% (8 tries)" reads as meaningfully better than a coin flip, when
+// with only 8 tries it's well within the range plain luck would produce.
+// Simplification worth naming: backtest trials come from overlapping
+// windows on one price series, so they aren't truly independent samples
+// the way a textbook z-test assumes — this is a rough noise-vs-signal
+// gut check, not a rigorous significance test. Returns null if there's
+// too little data to say anything at all.
+function accuracySignificance(accuracy, trials) {
+  if (trials < 5) return null;
+  const standardError = Math.sqrt(0.25 / trials);
+  const z = (accuracy - 0.5) / standardError;
+  if (Math.abs(z) < 1) return 'not-significant';
+  if (Math.abs(z) < 2) return 'weak';
+  return 'notable';
+}
+
 // True if the most recent price sits within `thresholdPct` percent above
 // the lowest price in the series — a naive "near its recent low" proxy,
 // not a real support/resistance analysis.

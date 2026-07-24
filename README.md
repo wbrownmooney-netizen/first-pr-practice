@@ -65,6 +65,22 @@ is a naive statistics exercise, not investment advice** — a small sample
 of past accuracy says nothing about future results, and the page does
 not place any real trades.
 
+Every accuracy figure is also labeled honestly against a coin-flip
+baseline instead of showing the raw percentage alone — most small-sample
+numbers on this page (e.g. "63% (8 tries)") are flagged as **"not
+statistically different from a coin flip"** rather than left to look
+like a real edge. `accuracySignificance()` in `signals.js` does this
+with a rough one-sample z-test against 50% (standard error
+`sqrt(0.25 / trials)`); results within about one standard error are
+"not-significant," within two are a "weak" signal, and beyond that are
+labeled "notable" (never "proven" — even a wide gap on a small, recent
+sample isn't a guarantee). An expandable explainer in the "New here?"
+section walks through why, with the actual math. This is a
+simplification, not a textbook significance test, since backtest trials
+come from overlapping windows on one price series and aren't fully
+independent — it's meant to catch the common case honestly (small
+numbers are noisy) rather than make a rigorous statistical claim.
+
 **Stock trend/accuracy need a second, optional key.** Finnhub's free
 tier returns a 403 for historical stock candle data (a paid-plan feature
 there), so that data instead comes from
