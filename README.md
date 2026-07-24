@@ -293,7 +293,14 @@ above the order form, walking through what a call/put actually is, what
 premium/strike/expiration mean, why an option's max loss (as a buyer) is
 capped at the premium paid, and a worked numeric example — aimed at
 someone who's never traded an option before placing their first
-simulated one.
+simulated one. A **"Quick self-check"** quiz at the end of that panel
+closes the loop with three low-stakes multiple-choice questions (max
+loss as a buyer, which direction a put gains value, why more time to
+expiry means more value) — no scoring, no persistence, answers can be
+retried freely, and every choice (right or wrong) gets its own
+explanation rather than a generic "wrong" message, since a common wrong
+answer usually reveals a specific misconception worth addressing
+directly.
 
 Within the Paper Trading Simulator, an **Options** section lets you buy
 simulated call and put contracts on any crypto or stock symbol the rest
