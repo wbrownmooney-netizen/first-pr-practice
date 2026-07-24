@@ -158,6 +158,28 @@
     margin-top: 0.75rem;
     font-size: 0.82rem;
   }
+  .edu-quiz { margin-top: 1rem; }
+  .edu-quiz h4 { margin: 0 0 0.6rem; font-size: 0.85rem; }
+  .quiz-q { margin-bottom: 1rem; }
+  .quiz-q:last-child { margin-bottom: 0; }
+  .quiz-question { margin: 0 0 0.5rem; font-weight: 600; font-size: 0.85rem; }
+  .quiz-choices { display: flex; flex-direction: column; gap: 0.4rem; }
+  .quiz-choice {
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+  .quiz-choice:hover { border-color: var(--accent); }
+  .quiz-choice.correct { border-color: var(--up); background: rgba(22, 163, 74, 0.12); }
+  .quiz-choice.incorrect { border-color: var(--down); background: rgba(220, 38, 38, 0.12); }
+  .quiz-feedback { margin: 0.5rem 0 0; font-size: 0.82rem; }
+  .quiz-feedback.up { color: var(--up); }
+  .quiz-feedback.down { color: var(--down); }
   section {
     background: var(--card);
     border: 1px solid var(--border);
@@ -689,6 +711,36 @@
             contract expires worthless and you lose the full $3 premium.
             That's the trade this simulator lets you practice, with fake
             money and real math.
+          </div>
+          <div class="edu-quiz">
+            <h4>Quick self-check</h4>
+            <div class="quiz-q">
+              <p class="quiz-question">You buy 1 call option for a $3 premium. The stock crashes to $0 before expiration. What's your loss?</p>
+              <div class="quiz-choices">
+                <button class="quiz-choice" data-correct="false" data-explain="Not quite — &quot;unlimited loss&quot; describes selling (writing) an option, not buying one. As a buyer, your risk is capped.">Unlimited</button>
+                <button class="quiz-choice" data-correct="true" data-explain="Right. As a buyer, the most you can ever lose is the premium — you simply let a worthless option expire rather than exercise it.">$3 &mdash; the premium you paid</button>
+                <button class="quiz-choice" data-correct="false" data-explain="Close, but not exercising doesn't refund the premium — you already paid that $3 to open the position, whether or not you ever exercise.">$0 &mdash; you just don't exercise it</button>
+              </div>
+              <p class="quiz-feedback" style="display:none;"></p>
+            </div>
+            <div class="quiz-q">
+              <p class="quiz-question">Which one gains value as the underlying price falls?</p>
+              <div class="quiz-choices">
+                <button class="quiz-choice" data-correct="false" data-explain="A call gets more valuable as the price rises above the strike, not falls — that's the opposite direction.">A call</button>
+                <button class="quiz-choice" data-correct="true" data-explain="Right. A put gives you the right to sell at a fixed strike price, so it becomes more valuable the further the underlying falls below that strike.">A put</button>
+                <button class="quiz-choice" data-correct="false" data-explain="Calls and puts move in opposite directions from each other, not together.">Both, equally</button>
+              </div>
+              <p class="quiz-feedback" style="display:none;"></p>
+            </div>
+            <div class="quiz-q">
+              <p class="quiz-question">An option with 30 days left is generally worth more than an identical option with only 5 days left, all else equal. Why?</p>
+              <div class="quiz-choices">
+                <button class="quiz-choice" data-correct="true" data-explain="Right — this is &quot;time value,&quot; and it's exactly what theta measures: value that decays away as expiration approaches, whether or not the price ever moves.">More time means more chance the price moves in your favor before expiration</button>
+                <button class="quiz-choice" data-correct="false" data-explain="It's actually the opposite — more time to expiry means more time value, so (all else equal) it costs more, not less.">Options with more time to expiry always cost less</button>
+                <button class="quiz-choice" data-correct="false" data-explain="Time is one of the two things that changes an option's value here — see the &quot;time decay&quot; (theta) line on any open position's breakdown.">Time doesn't affect an option's value, only price does</button>
+              </div>
+              <p class="quiz-feedback" style="display:none;"></p>
+            </div>
           </div>
         </div>
       </details>
@@ -2168,6 +2220,25 @@
       const btn = e.target.closest('[data-close-option]');
       if (!btn) return;
       closeOptionPosition(btn.dataset.closeOption);
+    });
+
+    // Low-stakes self-check quiz in the calls/puts education panel — no
+    // scoring, no persistence, answers can be retried freely. Each
+    // choice carries its own explanation (why it's right, or why the
+    // reasoning behind it is a common mix-up) rather than a single
+    // generic "wrong" message.
+    document.querySelectorAll('.quiz-q').forEach(q => {
+      const feedback = q.querySelector('.quiz-feedback');
+      q.querySelectorAll('.quiz-choice').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const correct = btn.dataset.correct === 'true';
+          q.querySelectorAll('.quiz-choice').forEach(b => b.classList.remove('correct', 'incorrect'));
+          btn.classList.add(correct ? 'correct' : 'incorrect');
+          feedback.textContent = btn.dataset.explain;
+          feedback.className = 'quiz-feedback ' + (correct ? 'up' : 'down');
+          feedback.style.display = 'block';
+        });
+      });
     });
 
     // No free "top movers" feed exists for stocks, so we default the
