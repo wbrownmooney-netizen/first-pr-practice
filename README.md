@@ -264,6 +264,19 @@ helper it depends on) lives in `options.js`, tested in `test.html`
 against known textbook reference values, put-call parity, and exact
 intrinsic value at expiration.
 
+Each open position has a **"Why did this change?"** expandable section —
+an educational breakdown of *why* its value moved, not just by how much.
+Since this simulator holds volatility fixed per asset class, only two
+things actually change between opening a position and now: the
+underlying price, and the time remaining. `decomposeOptionChange()` (also
+in `options.js`, also tested) splits the value change into a time-decay
+component (what if only time had passed) and a price-move component
+(what if only the price had changed) — plus an honestly-labeled
+"interaction" leftover, since option value isn't linear in either
+variable and the two components rarely sum exactly to the real change.
+This is meant to build intuition for how options pricing actually works,
+not to hide the model's rough edges behind a falsely-clean explanation.
+
 ## Getting started
 
 1. Clone the repo: `git clone https://github.com/wbrownmooney-netizen/first-pr-practice.git`

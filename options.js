@@ -29,3 +29,24 @@ function blackScholesPrice(kind, S, K, T, r, sigma) {
   }
   return K * Math.exp(-r * T) * normCdf(-d2) - S * normCdf(-d1);
 }
+
+// Educational breakdown of *why* an option's value moved between two
+// points in time. Since this simulator holds volatility fixed per asset
+// class, the only two things that actually change between opening and
+// now are the underlying price and the time remaining — so the change
+// in value can be decomposed into a "what if only time had passed"
+// component and a "what if only the price had moved" component. These
+// two rarely sum exactly to the real change, since option value isn't
+// linear in either variable (that's convexity/gamma) — the leftover is
+// reported as `interaction` rather than silently absorbed into either
+// figure, so the breakdown stays honest about not being a clean split.
+function decomposeOptionChange(kind, strike, r, sigma, priceStart, timeStart, priceNow, timeNow) {
+  const startValue = blackScholesPrice(kind, priceStart, strike, timeStart, r, sigma);
+  const endValue = blackScholesPrice(kind, priceNow, strike, timeNow, r, sigma);
+  const timeOnlyValue = blackScholesPrice(kind, priceStart, strike, timeNow, r, sigma);
+  const priceOnlyValue = blackScholesPrice(kind, priceNow, strike, timeStart, r, sigma);
+  const timeDecay = timeOnlyValue - startValue;
+  const priceMove = priceOnlyValue - startValue;
+  const interaction = endValue - startValue - timeDecay - priceMove;
+  return { startValue, endValue, timeDecay, priceMove, interaction };
+}
