@@ -45,6 +45,19 @@ icon that the spec itself doesn't require. The manifest now lists PNGs
 first (both `any` and `maskable` purpose) with the SVG kept as a
 fallback entry.
 
+The icon design itself: a diagonal blue-to-violet gradient background
+behind four ascending candlesticks, the tallest (rightmost) one in
+accent green — an obvious "trending up" read even at small sizes,
+versus the original's flat color and less clearly ordered candles. Since
+there's still no image library available in this environment, the PNGs
+are regenerated the same way as before (a small pure-Python rasterizer
+using only stdlib `zlib`/`struct`, no PIL/cairosvg/Inkscape), just with
+updated shapes and a hand-rolled diagonal gradient fill. Verified by
+decoding the generated PNGs back in-browser via canvas and checking
+specific pixel values (gradient interpolation, candle colors, and
+transparent rounded corners) against the expected math, not just "a
+valid PNG exists."
+
 ## Crypto & stocks dashboard
 
 `trading.html` is a second standalone page: live crypto prices (via the
