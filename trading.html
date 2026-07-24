@@ -632,6 +632,13 @@
               amplified compared to just holding the underlying. The
               tradeoff is <strong>time</strong> &mdash; if the move doesn't
               happen before expiration, the premium is gone for good.</dd>
+            <dt>"Greeks"</dt>
+            <dd>Real options traders track exactly how sensitive a
+              contract's price is to different things &mdash; how much it
+              moves per $1 in the underlying ("delta"), and how much it
+              decays per day that passes ("theta") are the two you'll see
+              labeled on your open positions below, once you place a
+              trade.</dd>
           </dl>
           <div class="edu-example">
             <strong>Example:</strong> a stock trades at $200. You buy 1
@@ -1690,9 +1697,9 @@
       return `
         <span class="hint">Started at ${fmtUsd(b.startValue)}/contract when ${escapeHtml(opt.symbol.toUpperCase())} was ${fmtUsd(opt.underlyingPriceAtOpen)}.</span><br>
         <span class="${cls(b.timeDecay)}">Time decay: ${signed(b.timeDecay)}</span>
-        <span class="hint">(options lose value as expiration approaches, all else equal)</span><br>
+        <span class="hint">(options lose value as expiration approaches, all else equal &mdash; traders call this sensitivity "theta")</span><br>
         <span class="${cls(b.priceMove)}">Price move: ${signed(b.priceMove)}</span>
-        <span class="hint">(${escapeHtml(opt.symbol.toUpperCase())} is now ${fmtUsd(S)})</span><br>
+        <span class="hint">(${escapeHtml(opt.symbol.toUpperCase())} is now ${fmtUsd(S)} &mdash; traders call this sensitivity "delta")</span><br>
         <span class="flat">Combined effect: ${signed(b.interaction)}</span>
         <span class="hint">(these two don't add up perfectly on their own — this is the rest)</span><br>
         <span class="hint">Now worth ${fmtUsd(b.endValue)}/contract —</span>

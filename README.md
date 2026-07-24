@@ -288,6 +288,11 @@ component (what if only time had passed) and a price-move component
 variable and the two components rarely sum exactly to the real change.
 This is meant to build intuition for how options pricing actually works,
 not to hide the model's rough edges behind a falsely-clean explanation.
+The time-decay and price-move lines are also labeled with the real
+industry terms for them ("theta" and "delta"), and the calls/puts
+education panel above the order form previews those names before you
+ever open a position, so the jargon on a live breakdown isn't the first
+time you've seen it.
 
 ## Getting started
 
