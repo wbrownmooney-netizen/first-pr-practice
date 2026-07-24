@@ -240,6 +240,13 @@ realized P/L too.
 
 ### Options (simulated)
 
+An expandable **"New to options? Calls vs. puts, explained"** panel sits
+above the order form, walking through what a call/put actually is, what
+premium/strike/expiration mean, why an option's max loss (as a buyer) is
+capped at the premium paid, and a worked numeric example — aimed at
+someone who's never traded an option before placing their first
+simulated one.
+
 Within the Paper Trading Simulator, an **Options** section lets you buy
 simulated call and put contracts on any crypto or stock symbol the rest
 of the page can price. Since there's no free options market data

@@ -103,6 +103,58 @@
     margin: 1.25rem 0;
     line-height: 1.4;
   }
+  .edu-block {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin: 1rem 0;
+    overflow: hidden;
+  }
+  .edu-block summary {
+    cursor: pointer;
+    padding: 0.7rem 1rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--accent);
+    list-style: none;
+  }
+  .edu-block summary::-webkit-details-marker { display: none; }
+  .edu-block summary::before { content: '\25b8  '; }
+  .edu-block[open] summary::before { content: '\25be  '; }
+  .edu-block .edu-content {
+    padding: 0 1rem 1rem;
+    font-size: 0.85rem;
+    line-height: 1.55;
+  }
+  .edu-content p { margin: 0.5rem 0; }
+  .edu-compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    margin: 0.75rem 0;
+  }
+  @media (max-width: 480px) {
+    .edu-compare { grid-template-columns: 1fr; }
+  }
+  .edu-compare > div {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.65rem 0.8rem;
+  }
+  .edu-compare h4 { margin: 0 0 0.35rem; font-size: 0.85rem; }
+  .edu-compare p { margin: 0; }
+  .edu-compare .call h4 { color: var(--up); }
+  .edu-compare .put h4 { color: var(--down); }
+  .edu-content dl { margin: 0.5rem 0; }
+  .edu-content dt { font-weight: 600; margin-top: 0.6rem; }
+  .edu-content dd { margin: 0.15rem 0 0; color: var(--muted); }
+  .edu-example {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.65rem 0.8rem;
+    margin-top: 0.75rem;
+    font-size: 0.82rem;
+  }
   section {
     background: var(--card);
     border: 1px solid var(--border);
@@ -530,6 +582,64 @@
         volatility. Still fake money, still no real broker, still not
         investment advice.
       </div>
+      <details class="edu-block">
+        <summary>New to options? Calls vs. puts, explained</summary>
+        <div class="edu-content">
+          <p>
+            An option is a contract that gives you the <em>right, but not
+            the obligation,</em> to buy or sell an asset at a fixed price
+            (the <strong>strike</strong>) on or before a set
+            <strong>expiration</strong> date. To get that right, you pay an
+            upfront cost called the <strong>premium</strong> &mdash; that's
+            the price shown in the order form below.
+          </p>
+          <div class="edu-compare">
+            <div class="call">
+              <h4>Call = right to buy</h4>
+              <p>Buy a call when you expect the price to go <strong>up</strong>.
+                It gains value as the underlying rises above the strike,
+                and becomes more valuable the further above strike it
+                goes.</p>
+            </div>
+            <div class="put">
+              <h4>Put = right to sell</h4>
+              <p>Buy a put when you expect the price to go <strong>down</strong>.
+                It gains value as the underlying falls below the strike,
+                and becomes more valuable the further below strike it
+                goes.</p>
+            </div>
+          </div>
+          <dl>
+            <dt>Premium</dt>
+            <dd>What you pay to open the position. As a buyer &mdash; which
+              is all this simulator does, it doesn't simulate
+              <em>writing</em> (selling) options &mdash; the premium is
+              also your maximum possible loss, no matter how wrong the bet
+              turns out to be.</dd>
+            <dt>In the money / out of the money</dt>
+            <dd>A call is "in the money" when the underlying price is above
+              the strike (and "out of the money" below it); a put is the
+              reverse. An option that's out of the money at expiration is
+              worth exactly $0.</dd>
+            <dt>Why buy an option instead of the asset itself?</dt>
+            <dd>Leverage: a small premium can control exposure to a much
+              larger position, so percentage gains (and losses) are
+              amplified compared to just holding the underlying. The
+              tradeoff is <strong>time</strong> &mdash; if the move doesn't
+              happen before expiration, the premium is gone for good.</dd>
+          </dl>
+          <div class="edu-example">
+            <strong>Example:</strong> a stock trades at $200. You buy 1
+            call, strike $210, expiring in 30 days, for a $3 premium. If
+            the stock rises to $225 by expiration, that contract is worth
+            about $15&nbsp;(225&nbsp;&minus;&nbsp;210) &mdash; a $12 profit
+            on your $3 bet. If the stock stays at or below $210, the
+            contract expires worthless and you lose the full $3 premium.
+            That's the trade this simulator lets you practice, with fake
+            money and real math.
+          </div>
+        </div>
+      </details>
       <div class="row-inline">
         <select id="option-asset-type">
           <option value="crypto">Crypto</option>
