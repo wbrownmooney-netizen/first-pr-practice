@@ -311,6 +311,7 @@
       <a href="#crypto-section">Crypto</a>
       <a href="#stocks-section">Stocks</a>
       <a href="#chart-section">Chart</a>
+      <a href="#strategy-section">Strategy comparison</a>
       <a href="#news-section">News</a>
       <a href="#paper-trading-section">Paper Trading</a>
       <a href="#glossary-section">Glossary</a>
@@ -543,6 +544,46 @@
       </div>
       <p id="chart-status" class="status"></p>
       <div id="chart-container" style="height: 400px; margin-top: 0.75rem;"></div>
+    </section>
+
+    <section id="strategy-section">
+      <h2>Strategy comparison</h2>
+      <p class="hint" style="margin-top:0;">
+        Runs three different naive signals back-to-back over the same
+        recent price history for one symbol, so their backtested
+        accuracy can be compared side by side: the same linear-trend
+        signal used elsewhere on this page, a classic
+        moving-average-crossover signal, and an RSI mean-reversion
+        signal. All three are simple, disclosed heuristics &mdash; none of
+        them is a real trading strategy, and a higher backtested accuracy
+        here is not a promise about what happens next (see the
+        significance label on each row, same coin-flip baseline used
+        elsewhere on this page).
+      </p>
+      <div class="row-inline">
+        <select id="strategy-asset-type">
+          <option value="crypto">Crypto</option>
+          <option value="stock">Stock</option>
+        </select>
+        <input id="strategy-symbol-input" type="text" placeholder="e.g. bitcoin, or AAPL" autocomplete="off">
+        <button id="strategy-compare-btn">Compare</button>
+      </div>
+      <p id="strategy-status" class="status"></p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Strategy</th>
+              <th class="num">Accuracy</th>
+              <th class="num">Trials</th>
+              <th>Vs. coin flip</th>
+            </tr>
+          </thead>
+          <tbody id="strategy-rows">
+            <tr><td colspan="4" class="status">Enter a symbol above and click Compare.</td></tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <section id="news-section">
@@ -1423,6 +1464,85 @@
     document.getElementById('chart-load-btn').addEventListener('click', loadChart);
     document.getElementById('chart-symbol-input').addEventListener('keydown', e => {
       if (e.key === 'Enter') loadChart();
+    });
+
+    // --- Strategy comparison --------------------------------------------
+    // Reuses the same OHLC fetchers as the Chart section above (so no new
+    // network path to trust), then runs three signal functions from
+    // signals.js over the same closing-price series via
+    // backtestSignalWith — the naive linear-trend signal used elsewhere
+    // on this page, moving-average crossover, and RSI mean-reversion.
+    // Each strategy gets its own window size (just large enough for that
+    // signal to compute): 5 for the linear trend (matches the Stocks
+    // table's window elsewhere on this page), 10 for a 5/10 MA
+    // crossover, 15 for a 14-period RSI.
+    const STRATEGY_DEFINITIONS = [
+      { name: 'Naive trend (linear fit)', predict: predictTrend, window: 5 },
+      { name: 'Moving-average crossover (5/10)', predict: prices => predictTrendMA(prices, 5, 10), window: 10 },
+      { name: 'RSI mean-reversion (14)', predict: prices => predictTrendRSI(prices, 14), window: 15 }
+    ];
+
+    function significanceLabel(sig) {
+      if (!sig) return 'not enough trials';
+      return sig.replace('-', ' ');
+    }
+
+    async function runStrategyComparison() {
+      const statusEl = document.getElementById('strategy-status');
+      const rowsEl = document.getElementById('strategy-rows');
+      const assetType = document.getElementById('strategy-asset-type').value;
+      const symbolInput = document.getElementById('strategy-symbol-input').value.trim();
+      const twelveDataKey = document.getElementById('twelvedata-key').value.trim();
+
+      if (!symbolInput) {
+        statusEl.textContent = 'Enter a symbol.';
+        statusEl.className = 'status error';
+        return;
+      }
+
+      statusEl.textContent = 'Loading price history…';
+      statusEl.className = 'status';
+
+      try {
+        const normSymbol = assetType === 'stock' ? symbolInput.toUpperCase() : symbolInput.toLowerCase();
+        const candles = assetType === 'crypto'
+          ? await fetchCryptoOhlc(normSymbol)
+          : await fetchStockOhlc(normSymbol, twelveDataKey);
+        const closes = candles.map(c => c.close);
+
+        if (closes.length < 20) {
+          statusEl.textContent = 'Not enough price history for that symbol to compare strategies.';
+          statusEl.className = 'status error';
+          rowsEl.innerHTML = '<tr><td colspan="4" class="status">No data.</td></tr>';
+          return;
+        }
+
+        rowsEl.innerHTML = STRATEGY_DEFINITIONS.map(s => {
+          const result = backtestSignalWith(s.predict, closes, s.window);
+          if (!result) {
+            return `<tr><td>${escapeHtml(s.name)}</td><td class="num">n/a</td><td class="num">0</td><td>no scoreable trials</td></tr>`;
+          }
+          const sig = accuracySignificance(result.accuracy, result.trials);
+          return `<tr>
+            <td>${escapeHtml(s.name)}</td>
+            <td class="num">${(result.accuracy * 100).toFixed(0)}%</td>
+            <td class="num">${result.trials}</td>
+            <td>${significanceLabel(sig)}</td>
+          </tr>`;
+        }).join('');
+
+        statusEl.textContent = `Compared over ${closes.length} price points for ${normSymbol}.`;
+        statusEl.className = 'status';
+      } catch (err) {
+        statusEl.textContent = "Couldn't compare strategies: " + err.message;
+        statusEl.className = 'status error';
+        rowsEl.innerHTML = '<tr><td colspan="4" class="status">No data.</td></tr>';
+      }
+    }
+
+    document.getElementById('strategy-compare-btn').addEventListener('click', runStrategyComparison);
+    document.getElementById('strategy-symbol-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') runStrategyComparison();
     });
 
     window.addEventListener('resize', () => {
