@@ -156,6 +156,21 @@ stops them. Whatever triggered an alert also gets its row highlighted in
 the table (a brief pulse, then a steady tint) for about two minutes, so
 it's easy to spot which one changed.
 
+A **Price target alerts** panel, further down the same section, lets you
+watch a specific coin or stock for a price you choose, independent of
+the trend/mover alerts above: pick crypto or stock, enter a symbol and a
+target price, and it's added to a list checked on every poll (same 60s
+cadence as the rest of live alerts, and gated behind the same "Enable
+live alerts" toggle). Crypto accepts a CoinGecko id or ticker matched
+against whatever's currently loaded in the Crypto table; stocks must be
+in the watchlist below. Each alert fires **once**, the moment the live
+price crosses the target in either direction, then removes itself —
+add it again to watch for another crossing. Crossings are detected
+between polls (this poll's price vs. last poll's), not just "currently
+past target," so an alert added while already past its target won't
+fire immediately; it needs to actually cross while being watched. Stored
+locally, same as everything else on this page.
+
 A **Potential Movers** section pulls out anything currently near its
 recent low (within 10% for crypto, 5% for stocks — arbitrary, disclosed
 thresholds) *with* an upward trend signal at the same time — a naive

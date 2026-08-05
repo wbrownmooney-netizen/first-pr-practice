@@ -342,6 +342,42 @@
         <button id="alerts-toggle">Enable live alerts</button>
         <span id="alerts-status" class="status"></span>
       </div>
+
+      <h3 style="font-size: 0.95rem; margin: 1.25rem 0 0.75rem;">Price target alerts</h3>
+      <p class="hint" style="margin-top:0;">
+        Get notified when a specific coin or stock crosses a price you
+        pick, in either direction &mdash; separate from the trend/mover
+        alerts above. Still needs "Enable live alerts" on above to
+        actually fire; each alert fires once, then removes itself (add
+        it again to watch for another crossing). Crypto: enter the same
+        <a href="https://www.coingecko.com/en/all-cryptocurrencies" target="_blank" rel="noopener">CoinGecko id</a>
+        or ticker shown in the Crypto table below. Stocks: must be in
+        your watchlist in the Stocks section below.
+      </p>
+      <div class="row-inline">
+        <select id="target-type">
+          <option value="crypto">Crypto</option>
+          <option value="stock">Stock</option>
+        </select>
+        <input id="target-symbol" type="text" placeholder="e.g. bitcoin, or AAPL" autocomplete="off">
+        <input id="target-price" type="number" placeholder="Target price ($)" min="0" step="any">
+        <button id="add-target-btn">Add alert</button>
+      </div>
+      <p id="target-status" class="status"></p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th class="num">Target</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="target-rows">
+            <tr><td colspan="3" class="status">No price alerts set.</td></tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <section id="movers-section">
@@ -1077,6 +1113,124 @@
       }
     }
 
+    // --- Price target alerts --------------------------------------------
+    // User-set "notify me if X crosses $Y" alerts, separate from the
+    // trend/mover alerts above. Stored locally, checked against whatever
+    // live data cryptoData/stockData already have loaded (no extra
+    // network requests of their own).
+    const PRICE_TARGETS_KEY = 'priceTargets';
+
+    function loadPriceTargets() {
+      try {
+        const raw = localStorage.getItem(PRICE_TARGETS_KEY);
+        if (raw) return JSON.parse(raw);
+      } catch (e) { /* fall through to empty list */ }
+      return [];
+    }
+
+    function savePriceTargets() {
+      localStorage.setItem(PRICE_TARGETS_KEY, JSON.stringify(priceTargets));
+    }
+
+    function nextTargetId() {
+      return 'pt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    }
+
+    let priceTargets = loadPriceTargets();
+    // Last price seen per target id, so a crossing can be detected (not
+    // just "currently past target," which would otherwise fire on every
+    // single poll once past it). Not persisted — a fresh page load just
+    // re-seeds silently on the first poll, same spirit as
+    // previousTrends/previousMoverState below.
+    const previousTargetPrices = {};
+
+    function priceTargetCurrentPrice(t) {
+      if (t.type === 'crypto') {
+        const match = cryptoData.find(c => c.coin.id === t.symbol || c.coin.symbol.toLowerCase() === t.symbol);
+        return match ? match.coin.current_price : null;
+      }
+      const match = stockData.find(s => s.symbol === t.symbol);
+      return match ? match.price : null;
+    }
+
+    function renderPriceTargets() {
+      const tbody = document.getElementById('target-rows');
+      if (priceTargets.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="status">No price alerts set.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = priceTargets.map(t => `
+        <tr>
+          <td>${escapeHtml(t.symbol.toUpperCase())} <span class="hint">(${t.type})</span></td>
+          <td class="num">${fmtUsd(t.target)}</td>
+          <td class="num"><button class="ghost" data-remove-target="${t.id}">Remove</button></td>
+        </tr>`).join('');
+    }
+
+    // Checks every active target against whatever live data is currently
+    // loaded; fires (and one-shot removes) any that crossed since the
+    // last check, but only while live alerts are enabled — same "only
+    // notifies while you're watching" behavior as checkTrendChanges.
+    // Targets with no live price loaded yet are left untouched.
+    function checkPriceTargets() {
+      if (priceTargets.length === 0) return;
+      let changed = false;
+      const remaining = [];
+      for (const t of priceTargets) {
+        const price = priceTargetCurrentPrice(t);
+        if (price == null) {
+          remaining.push(t);
+          continue;
+        }
+        const prev = previousTargetPrices[t.id];
+        const crossed = prev != null
+          && ((prev < t.target && price >= t.target) || (prev > t.target && price <= t.target));
+        previousTargetPrices[t.id] = price;
+        if (crossed && alertsEnabled) {
+          notify(`${t.symbol.toUpperCase()} hit your target of ${fmtUsd(t.target)}`,
+            `Now at ${fmtUsd(price)}. This alert fired and was removed — add it again to watch for another crossing.`);
+          changed = true;
+          continue; // one-shot: don't keep it
+        }
+        remaining.push(t);
+      }
+      priceTargets = remaining;
+      if (changed) {
+        savePriceTargets();
+        renderPriceTargets();
+      }
+    }
+
+    document.getElementById('add-target-btn').addEventListener('click', () => {
+      const statusEl = document.getElementById('target-status');
+      const type = document.getElementById('target-type').value;
+      const symbolInput = document.getElementById('target-symbol').value.trim();
+      const target = parseFloat(document.getElementById('target-price').value);
+      if (!symbolInput || !target || target <= 0) {
+        statusEl.textContent = 'Enter a symbol and a positive target price.';
+        statusEl.className = 'status error';
+        return;
+      }
+      const symbol = type === 'stock' ? symbolInput.toUpperCase() : symbolInput.toLowerCase();
+      priceTargets.push({ id: nextTargetId(), type, symbol, target });
+      savePriceTargets();
+      renderPriceTargets();
+      document.getElementById('target-symbol').value = '';
+      document.getElementById('target-price').value = '';
+      statusEl.textContent = `Watching ${symbol.toUpperCase()} for ${fmtUsd(target)}.`;
+      statusEl.className = 'status';
+    });
+
+    document.getElementById('target-rows').addEventListener('click', e => {
+      const btn = e.target.closest('[data-remove-target]');
+      if (!btn) return;
+      priceTargets = priceTargets.filter(t => t.id !== btn.dataset.removeTarget);
+      savePriceTargets();
+      renderPriceTargets();
+    });
+
+    renderPriceTargets();
+
     function pollStocksIfConfigured() {
       const key = document.getElementById('finnhub-key').value.trim();
       const symbols = document.getElementById('stock-symbol').value.trim();
@@ -1488,6 +1642,7 @@
         }));
         checkTrendChanges('crypto', cryptoAlertItems);
         checkMoverChanges('crypto', cryptoAlertItems);
+        checkPriceTargets();
         const activeFilter = document.querySelector('#crypto-filter .filter-btn.active').dataset.filter;
         renderCrypto(activeFilter);
         renderMovers();
@@ -1661,6 +1816,7 @@
         }));
         checkTrendChanges('stock', stockAlertItems);
         checkMoverChanges('stock', stockAlertItems);
+        checkPriceTargets();
         renderStocks(activeFilter());
         renderMovers();
 
