@@ -56,7 +56,10 @@
   <div class="wrap">
     <h1>Signal logic tests</h1>
     <p>Checks <code>predictTrend</code>, <code>backtestSignal</code>,
-      <code>accuracySignificance</code>, and <code>isNearLow</code> from
+      <code>backtestSignalWith</code>, <code>simpleMovingAverage</code>,
+      <code>predictTrendMA</code>, <code>relativeStrengthIndex</code>,
+      <code>predictTrendRSI</code>, <code>accuracySignificance</code>, and
+      <code>isNearLow</code> from
       <code>signals.js</code>,
       <code>buyPosition</code>/<code>sellPosition</code>/<code>realizedGain</code>/<code>holdingTimeBias</code>
       from <code>portfolio.js</code>, and <code>blackScholesPrice</code>/
@@ -137,6 +140,68 @@
     test('accuracySignificance: large sample with a real gap is "notable"', () => {
       // se = sqrt(0.25/100) = 0.05, z = 0.3/0.05 = 6
       assertEqual(accuracySignificance(0.8, 100), 'notable', 'significance');
+    });
+
+    test('backtestSignalWith: matches backtestSignal when given predictTrend', () => {
+      const prices = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+      assertEqual(backtestSignalWith(predictTrend, prices, 2), backtestSignal(prices, 2), 'backtest');
+    });
+
+    test('simpleMovingAverage: averages the last `period` values only', () => {
+      assertEqual(simpleMovingAverage([1, 2, 3, 4, 5], 3), 4, 'sma');
+    });
+
+    test('simpleMovingAverage: fewer points than period -> null', () => {
+      assertEqual(simpleMovingAverage([1, 2], 3), null, 'sma');
+    });
+
+    test('predictTrendMA: short average above long average -> up', () => {
+      // last 5: [6,7,8,9,10] avg=8; last 10: [1..10] avg=5.5 -> short > long
+      assertEqual(predictTrendMA([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 5, 10), 'up', 'trend ma');
+    });
+
+    test('predictTrendMA: short average below long average -> down', () => {
+      assertEqual(predictTrendMA([10, 9, 8, 7, 6, 5, 4, 3, 2, 1], 5, 10), 'down', 'trend ma');
+    });
+
+    test('predictTrendMA: equal short/long averages -> flat', () => {
+      assertEqual(predictTrendMA(Array(10).fill(5), 5, 10), 'flat', 'trend ma');
+    });
+
+    test('predictTrendMA: not enough data for the long window -> null', () => {
+      assertEqual(predictTrendMA([1, 2, 3, 4, 5], 5, 10), null, 'trend ma');
+    });
+
+    test('relativeStrengthIndex: all gains, no losses -> 100', () => {
+      assertEqual(relativeStrengthIndex([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], 14), 100, 'rsi');
+    });
+
+    test('relativeStrengthIndex: all losses, no gains -> 0', () => {
+      assertEqual(relativeStrengthIndex([15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1], 14), 0, 'rsi');
+    });
+
+    test('relativeStrengthIndex: no changes at all -> 50', () => {
+      assertEqual(relativeStrengthIndex(Array(15).fill(10), 14), 50, 'rsi');
+    });
+
+    test('relativeStrengthIndex: not enough data -> null', () => {
+      assertEqual(relativeStrengthIndex([1, 2, 3], 14), null, 'rsi');
+    });
+
+    test('predictTrendRSI: overbought (RSI > 70) -> down', () => {
+      assertEqual(predictTrendRSI([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], 14), 'down', 'trend rsi');
+    });
+
+    test('predictTrendRSI: oversold (RSI < 30) -> up', () => {
+      assertEqual(predictTrendRSI([15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1], 14), 'up', 'trend rsi');
+    });
+
+    test('predictTrendRSI: mid-range RSI -> flat', () => {
+      assertEqual(predictTrendRSI(Array(15).fill(10), 14), 'flat', 'trend rsi');
+    });
+
+    test('predictTrendRSI: not enough data -> null', () => {
+      assertEqual(predictTrendRSI([1, 2, 3], 14), null, 'trend rsi');
     });
 
     test('isNearLow: current price close to the series minimum -> true', () => {

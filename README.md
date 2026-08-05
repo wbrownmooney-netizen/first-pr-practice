@@ -206,6 +206,31 @@ calendar-day strings — otherwise multiple same-day candles would collapse
 into duplicate, non-ascending time values, which the charting library
 rejects.
 
+### Strategy comparison
+
+A **Strategy comparison** section runs three different naive signals
+back-to-back over the same recent closing-price history for one symbol
+you enter, so their backtested accuracy can be compared side by side:
+the page's usual linear-trend signal (`predictTrend`), a classic
+moving-average-crossover signal (5-period average vs. 10-period
+average — `predictTrendMA`), and an RSI mean-reversion signal
+(14-period, overbought above 70 predicts a pullback, oversold below 30
+predicts a bounce — `predictTrendRSI`). It reuses the same OHLC fetchers
+as the Chart section above (CoinGecko for crypto, Twelve Data for
+stocks, so stocks need that same optional key), and walks each signal
+forward through that price history the same way the rest of the page's
+backtesting does — `backtestSignalWith()` in `signals.js` generalizes
+the walk-forward loop that used to be specific to `predictTrend` so it
+can score any of the three the same way (`backtestSignal()` is now a
+thin wrapper over it, kept for the existing call sites and tests).
+**None of these three is a real trading strategy** — same disclaimer as
+everywhere else on this page — and each row shows the same
+coin-flip-baseline significance label used elsewhere (`accuracySignificance()`)
+rather than a bare percentage, since a higher backtested number on a
+small sample isn't automatically meaningful. All the new signal
+functions are unit tested in `test.html` against known inputs the same
+way `predictTrend` and the rest already were.
+
 ### News
 
 A **News** section shows recent headlines, linked out to their original
