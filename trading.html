@@ -595,6 +595,10 @@
           <div class="label" title="Total profit/loss actually locked in from closed trades — sells and closed options only. Unsold positions don't count until you sell them.">Realized P/L (all-time)</div>
           <div class="value" id="realized-pl-value">$0.00</div>
         </div>
+        <div>
+          <div class="label" title="Realized P/L plus the unrealized P/L on everything you currently hold (open positions and options) — the single number for 'am I up or down overall,' not just what's been sold so far.">Total P/L (all-time)</div>
+          <div class="value" id="total-pl-value">$0.00</div>
+        </div>
         <button class="ghost" id="reset-btn">Reset to $10,000</button>
       </div>
 
@@ -1830,6 +1834,25 @@
       return paperState.cash + holdingsValue + optionsValue;
     }
 
+    // Unrealized P/L across every open position and option, using
+    // whatever live prices are currently cached (skips anything without
+    // one yet, same "don't guess" spirit as currentPortfolioValue()'s
+    // cost-basis fallback — except here a missing price just contributes
+    // nothing rather than a misleading $0 P/L).
+    function totalUnrealizedPL() {
+      let pl = 0;
+      for (const key in paperState.positions) {
+        const pos = paperState.positions[key];
+        const price = paperLivePrices[key];
+        if (price != null) pl += (price - pos.avgCost) * pos.quantity;
+      }
+      for (const opt of paperState.options) {
+        const value = optionCurrentValue(opt);
+        if (value != null) pl += (value - opt.premiumPaid) * opt.quantity;
+      }
+      return pl;
+    }
+
     function renderPaperBalances() {
       document.getElementById('cash-value').textContent = fmtUsd(paperState.cash);
       document.getElementById('total-value').textContent = fmtUsd(currentPortfolioValue());
@@ -1837,6 +1860,11 @@
       const realizedEl = document.getElementById('realized-pl-value');
       realizedEl.textContent = (paperState.realizedPL >= 0 ? '+' : '') + fmtUsd(paperState.realizedPL);
       realizedEl.className = 'value ' + (paperState.realizedPL >= 0 ? 'up' : 'down');
+
+      const totalPl = paperState.realizedPL + totalUnrealizedPL();
+      const totalPlEl = document.getElementById('total-pl-value');
+      totalPlEl.textContent = (totalPl >= 0 ? '+' : '') + fmtUsd(totalPl);
+      totalPlEl.className = 'value ' + (totalPl >= 0 ? 'up' : 'down');
     }
 
     function renderPaperHoldings() {
