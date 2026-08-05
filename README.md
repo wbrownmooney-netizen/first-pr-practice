@@ -282,6 +282,16 @@ meant to build the habit of noticing concentration risk before it's a
 problem, since nothing in a paper simulator naturally teaches that the
 way a real, painful loss would.
 
+An **Export/Import** control sits below the balance row: Export
+downloads your current cash, holdings, options, and trade history as a
+timestamped JSON file (a plain client-side `Blob`/anchor-download, no
+server involved); Import reads a previously exported file back in,
+after a loose shape check (`isValidPaperState()`) and a confirmation
+prompt, since it fully replaces whatever paper portfolio is currently
+saved in this browser. Meant as a backup, or a way to move a paper
+portfolio to a different browser or machine — it's still just
+`localStorage` under the hood, same as the rest of this simulator.
+
 A **Trading patterns** panel below the trade history mines your own
 closed trades for a well-documented behavioral-finance tendency: the
 **disposition effect**, the instinct to sell winners quickly but hold

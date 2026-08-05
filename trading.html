@@ -597,6 +597,18 @@
         </div>
         <button class="ghost" id="reset-btn">Reset to $10,000</button>
       </div>
+      <div class="row-inline" style="margin-top:0.75rem;">
+        <button class="ghost" id="export-btn">Export portfolio (JSON)</button>
+        <button class="ghost" id="import-btn">Import portfolio&hellip;</button>
+        <input type="file" id="import-file-input" accept="application/json" style="display:none;">
+        <span id="import-status" class="status"></span>
+      </div>
+      <p class="hint" style="margin-top:0.4rem;">
+        Export saves your cash, holdings, options, and trade history as a
+        JSON file &mdash; useful as a backup, or to move your paper
+        portfolio to another browser. Import replaces your current
+        portfolio with one from a previously exported file.
+      </p>
 
       <h3 style="font-size: 0.95rem; margin: 1.25rem 0 0.75rem;">Place a paper trade</h3>
       <div class="row-inline">
@@ -2115,6 +2127,64 @@
       paperLivePrices = {};
       savePaperState();
       renderPaperAll();
+    });
+
+    // Export/import the paper portfolio as a JSON file — a backup, or a
+    // way to move it to another browser. Nothing here touches saved API
+    // keys or the stock watchlist; it's scoped to the same state object
+    // reset-btn clears (cash, positions, options, history, realizedPL).
+    function exportPaperState() {
+      const blob = new Blob([JSON.stringify(paperState, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `paper-portfolio-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    // Validates the shape loosely (same defensive checks as
+    // loadPaperState's older-save-state handling) rather than trusting
+    // an arbitrary uploaded file to be well-formed.
+    function isValidPaperState(state) {
+      return state && typeof state === 'object'
+        && typeof state.cash === 'number'
+        && state.positions && typeof state.positions === 'object'
+        && Array.isArray(state.history);
+    }
+
+    document.getElementById('export-btn').addEventListener('click', exportPaperState);
+
+    document.getElementById('import-btn').addEventListener('click', () => {
+      document.getElementById('import-file-input').click();
+    });
+
+    document.getElementById('import-file-input').addEventListener('change', async (e) => {
+      const statusEl = document.getElementById('import-status');
+      const file = e.target.files[0];
+      e.target.value = ''; // allow re-selecting the same file next time
+      if (!file) return;
+
+      try {
+        const state = JSON.parse(await file.text());
+        if (!isValidPaperState(state)) throw new Error('not a valid portfolio export');
+        if (!confirm('Import this file? It replaces your current paper portfolio (holdings, options, history, and P/L) — export first if you want to keep it.')) {
+          return;
+        }
+        if (!state.options) state.options = [];
+        if (typeof state.realizedPL !== 'number') state.realizedPL = 0;
+        paperState = state;
+        paperLivePrices = {};
+        savePaperState();
+        renderPaperAll();
+        statusEl.textContent = 'Portfolio imported.';
+        statusEl.className = 'status';
+      } catch (err) {
+        statusEl.textContent = 'Import failed: ' + err.message;
+        statusEl.className = 'status error';
+      }
     });
 
     function nextOptionId() {
