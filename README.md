@@ -173,6 +173,33 @@ stock trend/accuracy elsewhere on the page. The underlying `isNearLow`
 check lives in `signals.js`, tested in `test.html` alongside the rest of
 the signal logic.
 
+**Price target alerts**, further down the same Alerts section, let you
+watch a specific price for one symbol rather than just its trend. Add a
+symbol and target price, and the next time this page polls (while live
+alerts are on) it fires a one-shot notification the moment the price
+crosses that target in either direction — then removes itself. Targets
+are stored in `localStorage` and checked against the same live prices
+the Crypto/Stocks tables already fetch, so there's no extra polling.
+
+### Strategy comparison
+
+A **Strategy comparison** section lets you run the naive trend signal
+against two other naive strategies for one symbol at a time: a
+**moving-average crossover** (`predictMACrossover` in `signals.js` —
+the average of the most recent half of the window vs. the average of
+the whole window) and **RSI** (`calculateRSI`/`predictRSI`, a plain
+gain/loss average rather than Wilder's smoothing). RSI is read as a
+**mean-reversion** signal — oversold (below 30) as a potential bounce
+up, overbought (above 70) as a potential pullback down — deliberately
+the opposite bet from the other two, which both follow momentum, so
+it's normal and expected for them to disagree. All three are backtested
+the same walk-forward way via a new `backtestPredictor(prices, window,
+predictFn)` (a generalized version of `backtestSignal` that takes any
+signal function, added rather than changing `backtestSignal` itself so
+its existing tests and behavior stay untouched). Price history reuses
+`fetchCryptoOhlc`/`fetchStockOhlc` — the same calls the Chart section
+already makes — rather than adding a third way to fetch prices.
+
 The dashboard is aware of your [paper trading](#paper-trading-simulator)
 holdings (read from the same browser's localStorage — no extra setup):
 anything you currently hold gets a **HELD** badge next to its name, is
@@ -270,7 +297,19 @@ option, computed via `realizedGain(costBasis, exitPrice, quantity)` (also
 in `portfolio.js`, also tested). It only counts what you've actually
 sold — an open, unsold position's paper gains don't show up here until
 you close it. Each sell/close in the Trade History table shows its own
-realized P/L too.
+realized P/L too. A **Total P/L (all-time)** figure sits next to it,
+adding today's unrealized P/L across every open position and option
+(`totalUnrealizedPL()` in `trading.html`) on top of that same realized
+figure — the one number for "am I up or down overall," not just what's
+been sold so far.
+
+**Export/Import** buttons below the balance row save the whole paper
+portfolio (cash, positions, options, history, realized P/L) as a JSON
+file, or restore one from a previously exported file — a backup, or a
+way to move a portfolio to another browser. Import asks for
+confirmation first, since it replaces whatever's currently there, and
+loosely validates the uploaded file's shape rather than trusting it
+blindly.
 
 Every buy also gets a **position-sizing note**: "(~6% of your
 portfolio)" normally, or a highlighted "that's a large concentration in

@@ -56,7 +56,9 @@
   <div class="wrap">
     <h1>Signal logic tests</h1>
     <p>Checks <code>predictTrend</code>, <code>backtestSignal</code>,
-      <code>accuracySignificance</code>, and <code>isNearLow</code> from
+      <code>accuracySignificance</code>, <code>isNearLow</code>,
+      <code>backtestPredictor</code>, <code>predictMACrossover</code>,
+      <code>calculateRSI</code>, and <code>predictRSI</code> from
       <code>signals.js</code>,
       <code>buyPosition</code>/<code>sellPosition</code>/<code>realizedGain</code>/<code>holdingTimeBias</code>
       from <code>portfolio.js</code>, and <code>blackScholesPrice</code>/
@@ -154,6 +156,61 @@
 
     test('isNearLow: non-positive low is guarded against -> false', () => {
       assertEqual(isNearLow([0, 0, 0], 5), false, 'near low');
+    });
+
+    test('backtestPredictor: matches backtestSignal when given predictTrend', () => {
+      const prices = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+      assertEqual(backtestPredictor(prices, 2, predictTrend), { accuracy: 1, trials: 7 }, 'generic backtest');
+    });
+
+    test('predictMACrossover: rising prices -> up (short MA above long MA)', () => {
+      assertEqual(predictMACrossover([1, 2, 3, 4]), 'up', 'ma crossover');
+    });
+
+    test('predictMACrossover: falling prices -> down (short MA below long MA)', () => {
+      assertEqual(predictMACrossover([4, 3, 2, 1]), 'down', 'ma crossover');
+    });
+
+    test('predictMACrossover: constant prices -> flat', () => {
+      assertEqual(predictMACrossover([5, 5, 5, 5]), 'flat', 'ma crossover');
+    });
+
+    test('predictMACrossover: fewer than 4 points -> null', () => {
+      assertEqual(predictMACrossover([1, 2, 3]), null, 'ma crossover');
+    });
+
+    test('calculateRSI: monotonic gains -> 100 (no losses to weigh against)', () => {
+      assertEqual(calculateRSI([1, 2, 3, 4, 5]), 100, 'rsi');
+    });
+
+    test('calculateRSI: monotonic losses -> 0 (no gains to weigh against)', () => {
+      assertEqual(calculateRSI([5, 4, 3, 2, 1]), 0, 'rsi');
+    });
+
+    test('calculateRSI: no movement at all -> 50 (neutral, not divide-by-zero)', () => {
+      assertEqual(calculateRSI([5, 5, 5, 5]), 50, 'rsi');
+    });
+
+    test('calculateRSI: mixed gains and losses -> known value', () => {
+      // deltas +1,-1,+1,-1,+1 -> avgGain 0.6, avgLoss 0.4, RSI = 100 - 100/2.5 = 60
+      assertApprox(calculateRSI([10, 11, 10, 11, 10, 11]), 60, 0.001, 'rsi');
+    });
+
+    test('calculateRSI: fewer than 2 points -> null', () => {
+      assertEqual(calculateRSI([5]), null, 'rsi');
+      assertEqual(calculateRSI([]), null, 'rsi');
+    });
+
+    test('predictRSI: overbought (RSI 100) reads as a mean-reversion "down"', () => {
+      assertEqual(predictRSI([1, 2, 3, 4, 5]), 'down', 'rsi signal');
+    });
+
+    test('predictRSI: oversold (RSI 0) reads as a mean-reversion "up"', () => {
+      assertEqual(predictRSI([5, 4, 3, 2, 1]), 'up', 'rsi signal');
+    });
+
+    test('predictRSI: neutral RSI (50) reads as "flat"', () => {
+      assertEqual(predictRSI([5, 5, 5, 5]), 'flat', 'rsi signal');
     });
 
     test('buyPosition: opening a new position sets avg cost to the trade price', () => {

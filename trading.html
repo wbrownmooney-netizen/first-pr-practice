@@ -308,6 +308,7 @@
     <nav class="section-nav" aria-label="Jump to section">
       <a href="#alerts-section">Alerts</a>
       <a href="#movers-section">Movers</a>
+      <a href="#strategy-section">Strategy</a>
       <a href="#crypto-section">Crypto</a>
       <a href="#stocks-section">Stocks</a>
       <a href="#chart-section">Chart</a>
@@ -342,6 +343,26 @@
         <button id="alerts-toggle">Enable live alerts</button>
         <span id="alerts-status" class="status"></span>
       </div>
+
+      <h3 style="font-size: 0.95rem; margin: 1.25rem 0 0.75rem;">Price target alerts</h3>
+      <p class="hint" style="margin-top:0;">
+        Set a specific price to watch, separate from the trend/mover
+        alerts above &mdash; you'll get a notification the moment a coin
+        or watchlist stock crosses it, in either direction, the next
+        time this page polls while live alerts are enabled. Each alert
+        fires once, then removes itself.
+      </p>
+      <div class="row-inline">
+        <select id="price-alert-type">
+          <option value="crypto">Crypto</option>
+          <option value="stock">Stock</option>
+        </select>
+        <input id="price-alert-symbol" type="text" placeholder="e.g. bitcoin, or AAPL" autocomplete="off">
+        <input id="price-alert-target" type="number" placeholder="Target price ($)" min="0" step="any">
+        <button id="add-price-alert-btn">Add alert</button>
+      </div>
+      <p id="price-alert-status" class="status"></p>
+      <ul id="price-alert-list" style="list-style:none; padding:0; margin: 0.5rem 0 0;"></ul>
     </section>
 
     <section id="movers-section">
@@ -430,6 +451,50 @@
           </p>
         </div>
       </details>
+    </section>
+
+    <section id="strategy-section">
+      <h2>Strategy comparison</h2>
+      <p class="hint" style="margin-top:0;">
+        Runs the naive trend signal used everywhere else on this page
+        alongside two other naive strategies &mdash; a
+        moving-average crossover and RSI &mdash; over the same recent
+        price history for one symbol, backtested the same walk-forward
+        way (see "New here?" above for what that means). RSI is read as
+        <strong>mean-reversion</strong> (oversold/overbought), the
+        opposite bet from the other two, which follow momentum &mdash;
+        so it's normal for them to disagree. None of this is investment
+        advice; it's a way to see that different naive rules can point
+        different directions, and how often each has actually been right.
+      </p>
+      <div class="row-inline">
+        <select id="strategy-asset-type">
+          <option value="crypto">Crypto</option>
+          <option value="stock">Stock</option>
+        </select>
+        <input id="strategy-symbol-input" type="text" placeholder="e.g. bitcoin, or AAPL" autocomplete="off">
+        <button id="strategy-compare-btn">Compare strategies</button>
+      </div>
+      <p class="hint">
+        Crypto accepts a CoinGecko id or ticker, same as elsewhere on
+        this page. Stocks need the Twelve Data key from the Stocks
+        section below (Finnhub's free tier doesn't include history).
+      </p>
+      <p id="strategy-status" class="status"></p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Strategy</th>
+              <th>Signal</th>
+              <th>Historical accuracy</th>
+            </tr>
+          </thead>
+          <tbody id="strategy-rows">
+            <tr><td colspan="3" class="status">Pick a symbol above and click "Compare strategies."</td></tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <section id="crypto-section">
@@ -595,8 +660,24 @@
           <div class="label" title="Total profit/loss actually locked in from closed trades — sells and closed options only. Unsold positions don't count until you sell them.">Realized P/L (all-time)</div>
           <div class="value" id="realized-pl-value">$0.00</div>
         </div>
+        <div>
+          <div class="label" title="Realized P/L plus the unrealized P/L on everything you currently hold (open positions and options) — the single number for 'am I up or down overall,' not just what's been sold so far.">Total P/L (all-time)</div>
+          <div class="value" id="total-pl-value">$0.00</div>
+        </div>
         <button class="ghost" id="reset-btn">Reset to $10,000</button>
       </div>
+      <div class="row-inline" style="margin-top:0.75rem;">
+        <button class="ghost" id="export-btn">Export portfolio (JSON)</button>
+        <button class="ghost" id="import-btn">Import portfolio&hellip;</button>
+        <input type="file" id="import-file-input" accept="application/json" style="display:none;">
+        <span id="import-status" class="status"></span>
+      </div>
+      <p class="hint" style="margin-top:0.4rem;">
+        Export saves your cash, holdings, options, and trade history as a
+        JSON file &mdash; useful as a backup, or to move your paper
+        portfolio to another browser. Import replaces your current
+        portfolio with one from a previously exported file.
+      </p>
 
       <h3 style="font-size: 0.95rem; margin: 1.25rem 0 0.75rem;">Place a paper trade</h3>
       <div class="row-inline">
@@ -1117,6 +1198,111 @@
       });
     });
 
+    // --- Price target alerts --------------------------------------------
+    // Separate from the trend/mover alerts above: a user-picked price per
+    // symbol, checked against live prices on the same poll. Stored in
+    // localStorage so alerts survive a page reload.
+    const PRICE_ALERTS_KEY = 'priceTargets';
+
+    function loadPriceAlerts() {
+      try {
+        const raw = localStorage.getItem(PRICE_ALERTS_KEY);
+        if (raw) return JSON.parse(raw);
+      } catch (e) { /* fall through to no saved alerts */ }
+      return [];
+    }
+
+    function savePriceAlerts() {
+      localStorage.setItem(PRICE_ALERTS_KEY, JSON.stringify(priceAlerts));
+    }
+
+    let priceAlerts = loadPriceAlerts();
+    // Last-seen price per "type:symbol", used only to detect a *crossing*
+    // (not just "currently past the target") — same reasoning as
+    // checkMoverChanges below: the first observation just seeds this map
+    // silently, so an alert set below the current price doesn't fire
+    // immediately.
+    const priceAlertLastPrice = {};
+
+    function renderPriceAlerts() {
+      const list = document.getElementById('price-alert-list');
+      if (priceAlerts.length === 0) {
+        list.innerHTML = '<li class="hint">No price alerts set.</li>';
+        return;
+      }
+      list.innerHTML = priceAlerts.map(a => `
+        <li class="row-inline" style="margin-bottom:0.4rem;">
+          <span>${escapeHtml(a.type)}:${escapeHtml(a.symbol)} &mdash; notify at ${fmtUsd(a.target)}</span>
+          <button class="ghost" data-remove-alert="${a.id}">Remove</button>
+        </li>`).join('');
+    }
+
+    document.getElementById('add-price-alert-btn').addEventListener('click', () => {
+      const statusEl = document.getElementById('price-alert-status');
+      const type = document.getElementById('price-alert-type').value;
+      const symbolInput = document.getElementById('price-alert-symbol');
+      const targetInput = document.getElementById('price-alert-target');
+      const symbolRaw = symbolInput.value.trim();
+      const target = parseFloat(targetInput.value);
+
+      if (!symbolRaw || !(target > 0)) {
+        statusEl.textContent = 'Enter a symbol and a positive target price.';
+        statusEl.className = 'status error';
+        return;
+      }
+
+      const symbol = type === 'stock' ? symbolRaw.toUpperCase() : symbolRaw.toLowerCase();
+      priceAlerts.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, type, symbol, target });
+      savePriceAlerts();
+      renderPriceAlerts();
+      symbolInput.value = '';
+      targetInput.value = '';
+      statusEl.textContent = `Watching ${symbol} for ${fmtUsd(target)}.`;
+      statusEl.className = 'status';
+    });
+
+    document.getElementById('price-alert-list').addEventListener('click', (e) => {
+      const id = e.target.dataset.removeAlert;
+      if (!id) return;
+      priceAlerts = priceAlerts.filter(a => a.id !== id);
+      savePriceAlerts();
+      renderPriceAlerts();
+    });
+
+    // Checks live prices against active price-target alerts, firing a
+    // one-shot notification the moment price crosses a target in either
+    // direction — mirrors checkTrendChanges/checkMoverChanges (only while
+    // alertsEnabled, only on an actual transition), except a fired alert
+    // is removed instead of just re-armed for next time.
+    function checkPriceAlerts(type, items) {
+      if (priceAlerts.length === 0) return;
+      const firedIds = [];
+      for (const { key, label, price } of items) {
+        if (price == null) continue;
+        const compositeKey = `${type}:${key}`;
+        const prevPrice = priceAlertLastPrice[compositeKey];
+        priceAlertLastPrice[compositeKey] = price;
+        if (prevPrice == null) continue;
+
+        for (const alert of priceAlerts) {
+          if (alert.type !== type || alert.symbol !== key) continue;
+          const crossedUp = prevPrice < alert.target && price >= alert.target;
+          const crossedDown = prevPrice > alert.target && price <= alert.target;
+          if (alertsEnabled && (crossedUp || crossedDown)) {
+            notify(`${label} hit your target of ${fmtUsd(alert.target)}`, `Now at ${fmtUsd(price)}.`);
+            firedIds.push(alert.id);
+          }
+        }
+      }
+      if (firedIds.length > 0) {
+        priceAlerts = priceAlerts.filter(a => !firedIds.includes(a.id));
+        savePriceAlerts();
+        renderPriceAlerts();
+      }
+    }
+
+    renderPriceAlerts();
+
     let cryptoData = [];
 
     function renderCrypto(filter) {
@@ -1345,6 +1531,71 @@
     let priceChart = null;
     let candleSeries = null;
 
+    // --- Strategy comparison ---------------------------------------------
+    // Reuses fetchCryptoOhlc/fetchStockOhlc (already resolved, chronological
+    // candles, same ones the Chart section fetches) rather than adding a
+    // third way to pull price history — only the closes are needed here.
+    async function fetchPriceSeriesForStrategy(type, symbol, twelveDataKey) {
+      const candles = type === 'crypto'
+        ? await fetchCryptoOhlc(symbol)
+        : await fetchStockOhlc(symbol, twelveDataKey);
+      return candles.map(c => c.close);
+    }
+
+    const STRATEGY_WINDOW = { crypto: 24, stock: 5 };
+
+    function strategyRowHtml(name, trend, backtest) {
+      return `
+        <tr>
+          <td>${name}</td>
+          <td>${trendBadge(trend, false)}</td>
+          <td>${accuracyLabel(backtest, false)}</td>
+        </tr>`;
+    }
+
+    document.getElementById('strategy-compare-btn').addEventListener('click', async () => {
+      const statusEl = document.getElementById('strategy-status');
+      const tbody = document.getElementById('strategy-rows');
+      const type = document.getElementById('strategy-asset-type').value;
+      const symbolRaw = document.getElementById('strategy-symbol-input').value.trim();
+
+      if (!symbolRaw) {
+        statusEl.textContent = 'Enter a symbol first.';
+        statusEl.className = 'status error';
+        return;
+      }
+
+      statusEl.textContent = 'Loading price history…';
+      statusEl.className = 'status';
+      tbody.innerHTML = '<tr><td colspan="3" class="status">Loading…</td></tr>';
+
+      try {
+        const symbol = type === 'stock' ? symbolRaw.toUpperCase() : symbolRaw.toLowerCase();
+        const twelveDataKey = document.getElementById('twelvedata-key').value.trim();
+        const prices = await fetchPriceSeriesForStrategy(type, symbol, twelveDataKey);
+        const window = STRATEGY_WINDOW[type];
+
+        const strategies = [
+          ['Naive trend (linear fit)', predictTrend],
+          ['Moving-average crossover', predictMACrossover],
+          ['RSI (mean-reversion)', predictRSI]
+        ];
+
+        tbody.innerHTML = strategies.map(([name, predictFn]) => {
+          const signal = predictFn(prices.slice(-window));
+          const backtest = backtestPredictor(prices, window, predictFn);
+          return strategyRowHtml(name, signal, backtest);
+        }).join('');
+
+        statusEl.textContent = `${prices.length} price points loaded for ${symbol}.`;
+        statusEl.className = 'status';
+      } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="3" class="status error">Couldn\'t load price history.</td></tr>';
+        statusEl.textContent = err.message;
+        statusEl.className = 'status error';
+      }
+    });
+
     function chartColors() {
       const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       return dark
@@ -1484,10 +1735,12 @@
           };
         });
         const cryptoAlertItems = cryptoData.map(c => ({
-          key: c.coin.id, label: c.coin.name, trend: c.trend, isMover: c.isMover, held: held.cryptoIds.has(c.coin.id)
+          key: c.coin.id, label: c.coin.name, trend: c.trend, isMover: c.isMover, held: held.cryptoIds.has(c.coin.id),
+          price: c.coin.current_price
         }));
         checkTrendChanges('crypto', cryptoAlertItems);
         checkMoverChanges('crypto', cryptoAlertItems);
+        checkPriceAlerts('crypto', cryptoAlertItems);
         const activeFilter = document.querySelector('#crypto-filter .filter-btn.active').dataset.filter;
         renderCrypto(activeFilter);
         renderMovers();
@@ -1657,10 +1910,12 @@
 
         const held = getHeldPositions();
         const stockAlertItems = stockData.map(s => ({
-          key: s.symbol, label: s.symbol, trend: s.trend, isMover: s.isMover, held: held.stockSymbols.has(s.symbol)
+          key: s.symbol, label: s.symbol, trend: s.trend, isMover: s.isMover, held: held.stockSymbols.has(s.symbol),
+          price: s.price
         }));
         checkTrendChanges('stock', stockAlertItems);
         checkMoverChanges('stock', stockAlertItems);
+        checkPriceAlerts('stock', stockAlertItems);
         renderStocks(activeFilter());
         renderMovers();
 
@@ -1830,6 +2085,25 @@
       return paperState.cash + holdingsValue + optionsValue;
     }
 
+    // Unrealized P/L across every open position and option, using
+    // whatever live prices are currently cached (skips anything without
+    // one yet, same "don't guess" spirit as currentPortfolioValue()'s
+    // cost-basis fallback — except here a missing price just contributes
+    // nothing rather than a misleading $0 P/L).
+    function totalUnrealizedPL() {
+      let pl = 0;
+      for (const key in paperState.positions) {
+        const pos = paperState.positions[key];
+        const price = paperLivePrices[key];
+        if (price != null) pl += (price - pos.avgCost) * pos.quantity;
+      }
+      for (const opt of paperState.options) {
+        const value = optionCurrentValue(opt);
+        if (value != null) pl += (value - opt.premiumPaid) * opt.quantity;
+      }
+      return pl;
+    }
+
     function renderPaperBalances() {
       document.getElementById('cash-value').textContent = fmtUsd(paperState.cash);
       document.getElementById('total-value').textContent = fmtUsd(currentPortfolioValue());
@@ -1837,6 +2111,11 @@
       const realizedEl = document.getElementById('realized-pl-value');
       realizedEl.textContent = (paperState.realizedPL >= 0 ? '+' : '') + fmtUsd(paperState.realizedPL);
       realizedEl.className = 'value ' + (paperState.realizedPL >= 0 ? 'up' : 'down');
+
+      const totalPl = paperState.realizedPL + totalUnrealizedPL();
+      const totalPlEl = document.getElementById('total-pl-value');
+      totalPlEl.textContent = (totalPl >= 0 ? '+' : '') + fmtUsd(totalPl);
+      totalPlEl.className = 'value ' + (totalPl >= 0 ? 'up' : 'down');
     }
 
     function renderPaperHoldings() {
@@ -2115,6 +2394,64 @@
       paperLivePrices = {};
       savePaperState();
       renderPaperAll();
+    });
+
+    // Export/import the paper portfolio as a JSON file — a backup, or a
+    // way to move it to another browser. Nothing here touches saved API
+    // keys or the stock watchlist; it's scoped to the same state object
+    // reset-btn clears (cash, positions, options, history, realizedPL).
+    function exportPaperState() {
+      const blob = new Blob([JSON.stringify(paperState, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `paper-portfolio-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    // Validates the shape loosely (same defensive checks as
+    // loadPaperState's older-save-state handling) rather than trusting
+    // an arbitrary uploaded file to be well-formed.
+    function isValidPaperState(state) {
+      return state && typeof state === 'object'
+        && typeof state.cash === 'number'
+        && state.positions && typeof state.positions === 'object'
+        && Array.isArray(state.history);
+    }
+
+    document.getElementById('export-btn').addEventListener('click', exportPaperState);
+
+    document.getElementById('import-btn').addEventListener('click', () => {
+      document.getElementById('import-file-input').click();
+    });
+
+    document.getElementById('import-file-input').addEventListener('change', async (e) => {
+      const statusEl = document.getElementById('import-status');
+      const file = e.target.files[0];
+      e.target.value = ''; // allow re-selecting the same file next time
+      if (!file) return;
+
+      try {
+        const state = JSON.parse(await file.text());
+        if (!isValidPaperState(state)) throw new Error('not a valid portfolio export');
+        if (!confirm('Import this file? It replaces your current paper portfolio (holdings, options, history, and P/L) — export first if you want to keep it.')) {
+          return;
+        }
+        if (!state.options) state.options = [];
+        if (typeof state.realizedPL !== 'number') state.realizedPL = 0;
+        paperState = state;
+        paperLivePrices = {};
+        savePaperState();
+        renderPaperAll();
+        statusEl.textContent = 'Portfolio imported.';
+        statusEl.className = 'status';
+      } catch (err) {
+        statusEl.textContent = 'Import failed: ' + err.message;
+        statusEl.className = 'status error';
+      }
     });
 
     function nextOptionId() {
