@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy — Crypto & Stocks Dashboard</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --text: #1a1a1a;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --accent: #1d4ed8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115;
+      --card: #1a1d24;
+      --text: #f2f2f2;
+      --muted: #9ca3af;
+      --border: #2a2e37;
+      --accent: #60a5fa;
+    }
+  }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 2rem 1rem 4rem;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 700px; margin: 0 auto; }
+  h1 { font-size: 1.6rem; margin-bottom: 0.25rem; }
+  .updated { color: var(--muted); font-size: 0.9rem; margin-bottom: 2rem; }
+  h2 { font-size: 1.15rem; margin-top: 2rem; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    margin: 1rem 0;
+  }
+  a { color: var(--accent); }
+  ul { padding-left: 1.25rem; }
+  li { margin-bottom: 0.4rem; }
+  .hint { color: var(--muted); font-size: 0.9rem; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Privacy Policy</h1>
+    <p class="updated">Crypto &amp; Stocks Dashboard (paper trading simulator) &mdash; last updated 2026-08-08</p>
+
+    <div class="card">
+      <strong>Short version:</strong> this app has no backend server and no
+      account system. Nothing you enter or do in the app is ever sent to
+      its developer. Everything &mdash; your API keys, your simulated
+      portfolio, your trade history &mdash; stays only on your own device.
+    </div>
+
+    <h2>What this app does</h2>
+    <p>
+      This is an educational dashboard showing live cryptocurrency and
+      stock prices, naive statistical trend signals, and a fake-money
+      ("paper") trading simulator. It does not connect to a real broker,
+      does not move real money, and is not investment advice.
+    </p>
+
+    <h2>Data we collect</h2>
+    <p><strong>None.</strong> The app has no server component, no analytics,
+      no advertising SDKs, and no user accounts. The developer has no way
+      to see what you enter into the app.</p>
+
+    <h2>Data stored on your device</h2>
+    <p>The app stores the following locally on your device only (in
+      browser <code>localStorage</code>, or its native-app equivalent),
+      and never transmits it anywhere except where noted below:</p>
+    <ul>
+      <li>Any third-party API keys you choose to enter (Finnhub, Twelve
+        Data) &mdash; used only to make requests directly from your
+        device to that provider.</li>
+      <li>Your simulated ("paper") portfolio: cash balance, holdings,
+        option positions, and trade history.</li>
+      <li>Your price-alert and price-target settings, and your stock
+        watchlist.</li>
+    </ul>
+    <p class="hint">Uninstalling the app, or clearing site data if using
+      the web version, permanently deletes all of this.</p>
+
+    <h2>Data sent to third parties</h2>
+    <p>To show live prices, news, and charts, the app makes direct
+      requests from your device to these third-party services. No data
+      passes through any server operated by this app's developer:</p>
+    <ul>
+      <li><a href="https://www.coingecko.com/en/api" target="_blank" rel="noopener">CoinGecko</a> &mdash; cryptocurrency prices and history (no key required)</li>
+      <li><a href="https://finnhub.io/" target="_blank" rel="noopener">Finnhub</a> &mdash; stock quotes and news (requires a key you provide)</li>
+      <li><a href="https://twelvedata.com/" target="_blank" rel="noopener">Twelve Data</a> &mdash; stock price history (requires a key you provide)</li>
+      <li><a href="https://coinstats.app/" target="_blank" rel="noopener">CoinStats</a> &mdash; crypto news headlines (no key required)</li>
+    </ul>
+    <p>Each of these requests is subject to that provider's own privacy
+      policy, and typically includes standard technical data any web
+      request carries (e.g. your IP address). This app does not control
+      or have access to that data.</p>
+
+    <h2>Notifications</h2>
+    <p>Optional price-alert notifications are generated entirely on your
+      device from prices it already fetched &mdash; no notification
+      service or push server is involved.</p>
+
+    <h2>Children's privacy</h2>
+    <p>This app is not directed at children and does not knowingly
+      collect information from anyone, of any age &mdash; it doesn't
+      collect information at all.</p>
+
+    <h2>Changes to this policy</h2>
+    <p>If this app's data practices ever change, this page will be
+      updated accordingly.</p>
+
+    <h2>Contact</h2>
+    <p>Questions about this policy or the app can be filed as an issue on
+      the <a href="https://github.com/wbrownmooney-netizen/first-pr-practice" target="_blank" rel="noopener">GitHub repository</a>.</p>
+  </div>
+</body>
+</html>

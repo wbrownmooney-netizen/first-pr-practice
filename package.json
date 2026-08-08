@@ -1,0 +1,33 @@
+{
+  "name": "trading-dashboard-app",
+  "version": "1.0.0",
+  "description": "Native Android wrapper (Capacitor) for the Crypto & Stocks Dashboard paper trading simulator.",
+  "private": true,
+  "scripts": {
+    "sync:www": "node scripts/build-www.js",
+    "android": "npm run sync:www && npx cap sync android"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wbrownmooney-netizen/first-pr-practice.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/wbrownmooney-netizen/first-pr-practice/issues"
+  },
+  "homepage": "https://github.com/wbrownmooney-netizen/first-pr-practice#readme",
+  "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5"
+  },
+  "allowScripts": {
+    "sharp@0.32.6": true
+  }
+}

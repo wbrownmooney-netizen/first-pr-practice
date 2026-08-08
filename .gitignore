@@ -1,0 +1,14 @@
+# Node
+node_modules/
+
+# www/ is generated from trading.html by scripts/build-www.js — not source
+www/
+
+# Android build outputs and local machine config (not the native project source itself)
+android/build/
+android/app/build/
+android/capacitor-cordova-android-plugins/build/
+android/.gradle/
+android/local.properties
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
