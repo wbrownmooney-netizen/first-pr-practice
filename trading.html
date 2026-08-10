@@ -365,6 +365,25 @@
       or places real trades.
     </div>
 
+    <section id="onboarding-banner" style="display:none; border: 1px solid var(--accent-grad-start); background: var(--accent-tint);">
+      <h2>Welcome — quick setup</h2>
+      <p class="hint" style="margin-top:0; font-size:0.85rem;">
+        Crypto prices work immediately, no setup needed. Stocks need one
+        free API key from Finnhub &mdash; takes about 30 seconds.
+      </p>
+      <div class="row-inline">
+        <a href="https://finnhub.io/register" target="_blank" rel="noopener">
+          <button type="button">Get a free Finnhub key &rarr;</button>
+        </a>
+      </div>
+      <div class="row-inline" style="margin-top:0.75rem;">
+        <input id="onboarding-key-input" type="password" placeholder="Paste your Finnhub key here" autocomplete="off">
+        <button type="button" id="onboarding-save-btn">Save &amp; continue</button>
+        <button type="button" class="ghost" id="onboarding-skip-btn">Skip, just show me crypto</button>
+      </div>
+      <p id="onboarding-status" class="status"></p>
+    </section>
+
     <section id="alerts-section">
       <h2>Live trend alerts</h2>
       <p class="hint" style="margin-top:0;">
@@ -2671,6 +2690,36 @@
 
     const savedKey = localStorage.getItem('finnhubKey');
     if (savedKey) document.getElementById('finnhub-key').value = savedKey;
+
+    // First-run onboarding: shown only if there's no saved Finnhub key
+    // yet and the user hasn't already dismissed it. Crypto works with
+    // zero setup, so this exists purely to surface the one manual step
+    // (a free stock API key) up front instead of leaving a new user to
+    // discover it buried in the Stocks section further down.
+    const ONBOARDING_DISMISSED_KEY = 'onboardingDismissed';
+    if (!savedKey && !localStorage.getItem(ONBOARDING_DISMISSED_KEY)) {
+      document.getElementById('onboarding-banner').style.display = '';
+    }
+
+    function dismissOnboarding() {
+      localStorage.setItem(ONBOARDING_DISMISSED_KEY, '1');
+      document.getElementById('onboarding-banner').style.display = 'none';
+    }
+
+    document.getElementById('onboarding-save-btn').addEventListener('click', () => {
+      const statusEl = document.getElementById('onboarding-status');
+      const key = document.getElementById('onboarding-key-input').value.trim();
+      if (!key) {
+        statusEl.textContent = 'Paste your Finnhub key first, or use Skip.';
+        statusEl.className = 'status error';
+        return;
+      }
+      localStorage.setItem('finnhubKey', key);
+      document.getElementById('finnhub-key').value = key;
+      dismissOnboarding();
+    });
+
+    document.getElementById('onboarding-skip-btn').addEventListener('click', dismissOnboarding);
     const savedTwelveDataKey = localStorage.getItem('twelveDataKey');
     if (savedTwelveDataKey) document.getElementById('twelvedata-key').value = savedTwelveDataKey;
     const savedWatchlist = localStorage.getItem('stockWatchlist');
