@@ -1147,7 +1147,27 @@
     const recentAlerts = new Map();
     const ALERT_HIGHLIGHT_MS = 2 * 60 * 1000;
 
+    // True when running as the native Android app (via Capacitor) rather
+    // than a regular browser tab. The web Notification API used
+    // elsewhere on this page doesn't exist inside Android's WebView, so
+    // notifications need a different implementation there — checked
+    // once and reused rather than re-detected on every call.
+    function isNativeApp() {
+      return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+    }
+
+    // Native local notifications need a unique numeric id per
+    // notification (unlike the web Notification API, which doesn't).
+    let nextNotificationId = 1;
+
     function notify(title, body) {
+      if (isNativeApp()) {
+        const LocalNotifications = window.Capacitor.Plugins.LocalNotifications;
+        LocalNotifications.schedule({
+          notifications: [{ id: nextNotificationId++, title, body }]
+        }).catch(() => { /* best-effort — a missed notification isn't worth surfacing an error for */ });
+        return;
+      }
       if (Notification.permission === 'granted') {
         new Notification(title, { body });
       }
@@ -1210,6 +1230,16 @@
       statusEl.className = 'status';
     }
 
+    function startWatchingAlerts() {
+      alertsEnabled = true;
+      setAlertsUi(true, 'Watching for trend changes and new headlines every 60s while this tab stays open.');
+      alertsTimer = setInterval(() => {
+        loadCrypto();
+        pollStocksIfConfigured();
+        loadNews();
+      }, 60000);
+    }
+
     document.getElementById('alerts-toggle').addEventListener('click', () => {
       if (alertsEnabled) {
         alertsEnabled = false;
@@ -1217,6 +1247,18 @@
         setAlertsUi(false, 'Alerts paused.');
         return;
       }
+
+      if (isNativeApp()) {
+        window.Capacitor.Plugins.LocalNotifications.requestPermissions().then(result => {
+          if (result.display !== 'granted') {
+            setAlertsUi(false, 'Notification permission denied — enable it for this app in your device settings to use alerts.');
+            return;
+          }
+          startWatchingAlerts();
+        });
+        return;
+      }
+
       if (!('Notification' in window)) {
         setAlertsUi(false, "Your browser doesn't support notifications.");
         return;
@@ -1226,13 +1268,7 @@
           setAlertsUi(false, 'Notification permission denied — enable it for this site in your browser settings to use alerts.');
           return;
         }
-        alertsEnabled = true;
-        setAlertsUi(true, 'Watching for trend changes and new headlines every 60s while this tab stays open.');
-        alertsTimer = setInterval(() => {
-          loadCrypto();
-          pollStocksIfConfigured();
-          loadNews();
-        }, 60000);
+        startWatchingAlerts();
       });
     });
 
