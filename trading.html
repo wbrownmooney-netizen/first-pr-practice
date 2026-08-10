@@ -378,6 +378,23 @@
       </div>
       <div class="row-inline" style="margin-top:0.75rem;">
         <input id="onboarding-key-input" type="password" placeholder="Paste your Finnhub key here" autocomplete="off">
+      </div>
+
+      <p class="hint" style="font-size:0.85rem;">
+        Optional: add a free Twelve Data key too, to unlock stock trend
+        signals and chart history (Finnhub's free plan doesn't include
+        those). Skip this and stock prices still work fine.
+      </p>
+      <div class="row-inline">
+        <a href="https://twelvedata.com/register" target="_blank" rel="noopener">
+          <button type="button" class="ghost">Get a free Twelve Data key &rarr;</button>
+        </a>
+      </div>
+      <div class="row-inline" style="margin-top:0.75rem;">
+        <input id="onboarding-twelvedata-input" type="password" placeholder="Paste your Twelve Data key here (optional)" autocomplete="off">
+      </div>
+
+      <div class="row-inline" style="margin-top:1rem;">
         <button type="button" id="onboarding-save-btn">Save &amp; continue</button>
         <button type="button" class="ghost" id="onboarding-skip-btn">Skip, just show me crypto</button>
       </div>
@@ -2716,6 +2733,14 @@
       }
       localStorage.setItem('finnhubKey', key);
       document.getElementById('finnhub-key').value = key;
+
+      // Optional — only saved if the user actually pasted one.
+      const twelveDataKey = document.getElementById('onboarding-twelvedata-input').value.trim();
+      if (twelveDataKey) {
+        localStorage.setItem('twelveDataKey', twelveDataKey);
+        document.getElementById('twelvedata-key').value = twelveDataKey;
+      }
+
       dismissOnboarding();
     });
 
