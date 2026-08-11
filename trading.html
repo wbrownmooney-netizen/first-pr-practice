@@ -406,12 +406,14 @@
       <p class="hint" style="margin-top:0;">
         Get a browser notification whenever a coin or watchlist stock's
         trend flips to up or down, a symbol becomes a potential mover
-        (see below), or a new headline shows up in the News section
-        further down. This only works while this tab stays open in your
-        browser &mdash; there's no server behind this page, so it can't
-        notify you after you close it. A trend or mover alert also gets
-        its row highlighted in the tables below for a couple of minutes,
-        so it's easy to spot at a glance.
+        (see below), a new headline shows up in the News section further
+        down, or a new candlestick pattern forms on whatever chart is
+        currently loaded in the Chart section (only while "Show
+        candlestick patterns" is checked there). This only works while
+        this tab stays open in your browser &mdash; there's no server
+        behind this page, so it can't notify you after you close it. A
+        trend or mover alert also gets its row highlighted in the tables
+        below for a couple of minutes, so it's easy to spot at a glance.
       </p>
       <div class="row-inline">
         <button id="alerts-toggle">Enable live alerts</button>
@@ -684,6 +686,10 @@
         <input type="checkbox" id="chart-patterns-toggle" checked style="width:auto;">
         <span class="hint" style="margin:0;">Show candlestick patterns</span>
       </label>
+      <label class="row-inline" style="gap:0.4rem; cursor:pointer;">
+        <input type="checkbox" id="chart-highlow-toggle" checked style="width:auto;">
+        <span class="hint" style="margin:0;">Show period high/low</span>
+      </label>
       <p class="hint">
         Naive shape-matching against textbook candlestick patterns
         (doji, hammer, engulfing, morning/evening star) &mdash;
@@ -692,7 +698,13 @@
         next; unlike the Strategy comparison above, there's no backtested
         accuracy attached to these. Green markers below a candle are
         bullish shapes, red markers above are bearish, gray circles are
-        dojis. Hover a marker for its name.
+        dojis. Hover a marker for its name. With this checked and live
+        alerts enabled (Alerts section above), you'll also get a
+        notification whenever a new pattern forms on this chart while
+        the tab stays open. "Period high/low" draws two dashed reference
+        lines at the highest and lowest price in whatever range is
+        currently loaded &mdash; not a 52-week or all-time high, just
+        the highest/lowest point in this chart's own data.
       </p>
       <p id="chart-status" class="status"></p>
       <div id="chart-container" style="height: 400px; margin-top: 0.75rem;"></div>
@@ -1328,6 +1340,7 @@
         loadCrypto();
         pollStocksIfConfigured();
         loadNews();
+        refreshChartForAlerts();
       }, 60000);
     }
 
@@ -1789,6 +1802,10 @@
         borderUpColor: colors.up, borderDownColor: colors.down,
         wickUpColor: colors.up, wickDownColor: colors.down
       });
+      // A fresh series has no price lines yet — old references (if any)
+      // belonged to the series just removed above.
+      highPriceLine = null;
+      lowPriceLine = null;
       return candleSeries;
     }
 
@@ -1830,6 +1847,17 @@
         priceChart.timeScale().fitContent();
         lastLoadedCandles = candles;
         renderPatternMarkers();
+        renderHighLowLines();
+
+        // Tracked so the live-alerts poll loop can keep refreshing this
+        // same chart and watch for new patterns, without needing its
+        // own separate enable switch. Reset on every (re)load, including
+        // reloading the same symbol, so a pattern already alerted on
+        // doesn't immediately re-fire against a freshly-fetched series.
+        lastChartType = assetType;
+        lastChartSymbol = normSymbol;
+        lastAlertedPatternCandleTime = candles[candles.length - 1].time;
+
         statusEl.textContent = `Loaded ${candles.length} candles for ${normSymbol}.`;
         statusEl.className = 'status';
       } catch (err) {
@@ -1842,6 +1870,74 @@
     // need a re-fetch — just re-applies markers to the already-loaded
     // candles (or clears them).
     let lastLoadedCandles = [];
+
+    // Which chart (if any) is currently loaded, so the live-alerts poll
+    // loop knows what to keep refreshing — and the candle time already
+    // alerted on, so a pattern only fires once per new candle rather
+    // than every 60s poll while it's still the latest one.
+    let lastChartType = null;
+    let lastChartSymbol = null;
+    let lastAlertedPatternCandleTime = null;
+
+    // Re-fetches the currently loaded chart's candles, updates the
+    // chart and its markers, and — only while live alerts are on and
+    // the pattern-markers checkbox is checked — notifies if the newest
+    // candle carries a pattern that wasn't already alerted on. Silently
+    // does nothing if no chart is loaded; best-effort on fetch failure
+    // so one bad refresh doesn't interrupt the rest of the alert poll.
+    async function refreshChartForAlerts() {
+      if (!lastChartType || !lastChartSymbol || !candleSeries) return;
+      try {
+        const twelveDataKey = document.getElementById('twelvedata-key').value.trim();
+        const candles = lastChartType === 'crypto'
+          ? await fetchCryptoOhlc(lastChartSymbol)
+          : await fetchStockOhlc(lastChartSymbol, twelveDataKey);
+        if (candles.length === 0) return;
+
+        candleSeries.setData(candles);
+        lastLoadedCandles = candles;
+        renderPatternMarkers();
+        renderHighLowLines();
+
+        if (!document.getElementById('chart-patterns-toggle').checked) return;
+        const lastIndex = candles.length - 1;
+        const lastCandle = candles[lastIndex];
+        if (lastCandle.time === lastAlertedPatternCandleTime) return;
+
+        const latestMatch = detectPatterns(candles).find(m => m.index === lastIndex);
+        if (latestMatch) {
+          notify(
+            `${lastChartSymbol.toUpperCase()}: ${latestMatch.pattern}`,
+            `A ${latestMatch.pattern.toLowerCase()} formed on the chart — a naive shape match, not a trading signal.`
+          );
+          lastAlertedPatternCandleTime = lastCandle.time;
+        }
+      } catch (e) { /* best-effort — a failed chart refresh shouldn't break the rest of the alert poll */ }
+    }
+
+    // Dashed reference lines at the highest/lowest price in whatever
+    // candles are currently loaded — recreated on every render rather
+    // than moved, since createPriceLine has no update-in-place call.
+    let highPriceLine = null;
+    let lowPriceLine = null;
+
+    function renderHighLowLines() {
+      if (!candleSeries) return;
+      if (highPriceLine) { candleSeries.removePriceLine(highPriceLine); highPriceLine = null; }
+      if (lowPriceLine) { candleSeries.removePriceLine(lowPriceLine); lowPriceLine = null; }
+      if (!document.getElementById('chart-highlow-toggle').checked) return;
+      if (lastLoadedCandles.length === 0) return;
+
+      const high = Math.max(...lastLoadedCandles.map(c => c.high));
+      const low = Math.min(...lastLoadedCandles.map(c => c.low));
+      const lineOptions = {
+        color: '#f59e0b', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true
+      };
+      highPriceLine = candleSeries.createPriceLine({ ...lineOptions, price: high, title: 'Period high' });
+      lowPriceLine = candleSeries.createPriceLine({ ...lineOptions, price: low, title: 'Period low' });
+    }
+
+    document.getElementById('chart-highlow-toggle').addEventListener('change', renderHighLowLines);
 
     function renderPatternMarkers() {
       if (!candleSeries) return;
