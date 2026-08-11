@@ -680,6 +680,20 @@
         <input id="chart-symbol-input" type="text" placeholder="e.g. bitcoin, or AAPL" autocomplete="off">
         <button id="chart-load-btn">Load chart</button>
       </div>
+      <label class="row-inline" style="gap:0.4rem; cursor:pointer;">
+        <input type="checkbox" id="chart-patterns-toggle" checked style="width:auto;">
+        <span class="hint" style="margin:0;">Show candlestick patterns</span>
+      </label>
+      <p class="hint">
+        Naive shape-matching against textbook candlestick patterns
+        (doji, hammer, engulfing, morning/evening star) &mdash;
+        <strong>descriptive, not predictive.</strong> These label what a
+        candle (or short run of candles) looks like, not what happens
+        next; unlike the Strategy comparison above, there's no backtested
+        accuracy attached to these. Green markers below a candle are
+        bullish shapes, red markers above are bearish, gray circles are
+        dojis. Hover a marker for its name.
+      </p>
       <p id="chart-status" class="status"></p>
       <div id="chart-container" style="height: 400px; margin-top: 0.75rem;"></div>
     </section>
@@ -1066,6 +1080,7 @@
   <script src="signals.js"></script>
   <script src="portfolio.js"></script>
   <script src="options.js"></script>
+  <script src="patterns.js"></script>
   <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
   <script>
     function trendBadge(trend, noHistorySource) {
@@ -1773,6 +1788,8 @@
         const series = ensureChart();
         series.setData(candles);
         priceChart.timeScale().fitContent();
+        lastLoadedCandles = candles;
+        renderPatternMarkers();
         statusEl.textContent = `Loaded ${candles.length} candles for ${normSymbol}.`;
         statusEl.className = 'status';
       } catch (err) {
@@ -1780,6 +1797,30 @@
         statusEl.className = 'status error';
       }
     }
+
+    // Kept separately from loadChart() so toggling the checkbox doesn't
+    // need a re-fetch — just re-applies markers to the already-loaded
+    // candles (or clears them).
+    let lastLoadedCandles = [];
+
+    function renderPatternMarkers() {
+      if (!candleSeries) return;
+      if (!document.getElementById('chart-patterns-toggle').checked) {
+        candleSeries.setMarkers([]);
+        return;
+      }
+      const matches = detectPatterns(lastLoadedCandles);
+      const markers = matches.map(({ index, pattern, direction }) => ({
+        time: lastLoadedCandles[index].time,
+        position: direction === 'bearish' ? 'aboveBar' : direction === 'bullish' ? 'belowBar' : 'inBar',
+        color: direction === 'bearish' ? '#f87171' : direction === 'bullish' ? '#4ade80' : '#9ca3af',
+        shape: direction === 'bearish' ? 'arrowDown' : direction === 'bullish' ? 'arrowUp' : 'circle',
+        text: pattern
+      }));
+      candleSeries.setMarkers(markers);
+    }
+
+    document.getElementById('chart-patterns-toggle').addEventListener('change', renderPatternMarkers);
 
     document.getElementById('chart-load-btn').addEventListener('click', loadChart);
     document.getElementById('chart-symbol-input').addEventListener('keydown', e => {

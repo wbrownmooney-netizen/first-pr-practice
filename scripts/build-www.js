@@ -16,7 +16,7 @@ fs.mkdirSync(wwwDir, { recursive: true });
 
 fs.copyFileSync(path.join(root, 'trading.html'), path.join(wwwDir, 'index.html'));
 
-for (const file of ['signals.js', 'portfolio.js', 'options.js', 'manifest.json', 'icon.svg', 'icon-192.png', 'icon-512.png']) {
+for (const file of ['signals.js', 'portfolio.js', 'options.js', 'patterns.js', 'manifest.json', 'icon.svg', 'icon-192.png', 'icon-512.png']) {
   fs.copyFileSync(path.join(root, file), path.join(wwwDir, file));
 }
 

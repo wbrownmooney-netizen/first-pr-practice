@@ -62,7 +62,11 @@
       <code>signals.js</code>,
       <code>buyPosition</code>/<code>sellPosition</code>/<code>realizedGain</code>/<code>holdingTimeBias</code>
       from <code>portfolio.js</code>, and <code>blackScholesPrice</code>/
-      <code>decomposeOptionChange</code> from <code>options.js</code>,
+      <code>decomposeOptionChange</code> from <code>options.js</code>, and
+      <code>isDoji</code>/<code>isHammer</code>/<code>isShootingStar</code>/
+      <code>isBullishEngulfing</code>/<code>isBearishEngulfing</code>/
+      <code>isMorningStar</code>/<code>isEveningStar</code>/<code>detectPatterns</code>
+      from <code>patterns.js</code>,
       against known inputs and outputs.</p>
     <p id="summary"></p>
     <ul id="results"></ul>
@@ -71,6 +75,7 @@
   <script src="signals.js"></script>
   <script src="portfolio.js"></script>
   <script src="options.js"></script>
+  <script src="patterns.js"></script>
   <script>
     const tests = [];
     function test(name, fn) { tests.push({ name, fn }); }
@@ -320,6 +325,83 @@
       assertApprox(d.timeDecay, -0.888942, 0.001, 'time decay');
       assertApprox(d.priceMove, 5.542802, 0.001, 'price move');
       if (!(d.timeDecay < 0)) throw new Error('time decay should be negative regardless of option type');
+    });
+
+    test('isDoji: tiny body relative to range -> true', () => {
+      assertEqual(isDoji({ open: 100, high: 102, low: 98, close: 100.05 }), true, 'doji');
+    });
+
+    test('isDoji: normal-sized body -> false', () => {
+      assertEqual(isDoji({ open: 100, high: 102, low: 98, close: 101.5 }), false, 'doji');
+    });
+
+    test('isHammer: small body near top, long lower wick, little upper wick -> true', () => {
+      assertEqual(isHammer({ open: 100, high: 101.5, low: 95, close: 101 }), true, 'hammer');
+    });
+
+    test('isHammer: no lower wick -> false', () => {
+      assertEqual(isHammer({ open: 100, high: 101, low: 99.5, close: 101 }), false, 'hammer');
+    });
+
+    test('isShootingStar: small body near bottom, long upper wick -> true', () => {
+      assertEqual(isShootingStar({ open: 100, high: 105, low: 98.5, close: 99 }), true, 'shooting star');
+    });
+
+    test('isShootingStar: no upper wick -> false', () => {
+      assertEqual(isShootingStar({ open: 100, high: 100.5, low: 95, close: 99 }), false, 'shooting star');
+    });
+
+    test('isBullishEngulfing: bullish body fully contains prior bearish body -> true', () => {
+      const prev = { open: 105, high: 106, low: 99, close: 100 };
+      const curr = { open: 99, high: 108, low: 98, close: 107 };
+      assertEqual(isBullishEngulfing(prev, curr), true, 'bullish engulfing');
+    });
+
+    test('isBullishEngulfing: does not fully engulf -> false', () => {
+      const prev = { open: 105, high: 106, low: 99, close: 100 };
+      const curr = { open: 101, high: 104, low: 98, close: 103 };
+      assertEqual(isBullishEngulfing(prev, curr), false, 'bullish engulfing');
+    });
+
+    test('isBearishEngulfing: bearish body fully contains prior bullish body -> true', () => {
+      const prev = { open: 100, high: 106, low: 99, close: 105 };
+      const curr = { open: 107, high: 108, low: 98, close: 99 };
+      assertEqual(isBearishEngulfing(prev, curr), true, 'bearish engulfing');
+    });
+
+    test('isMorningStar: bearish, small gap-down middle, bullish close back into first body -> true', () => {
+      const first = { open: 110, high: 111, low: 99, close: 100 };
+      const middle = { open: 99, high: 100, low: 97, close: 98 };
+      const last = { open: 99, high: 107, low: 98, close: 106 };
+      assertEqual(isMorningStar(first, middle, last), true, 'morning star');
+    });
+
+    test('isMorningStar: last candle does not close back into first body -> false', () => {
+      const first = { open: 110, high: 111, low: 99, close: 100 };
+      const middle = { open: 99, high: 100, low: 97, close: 98 };
+      const last = { open: 99, high: 103, low: 98, close: 102 };
+      assertEqual(isMorningStar(first, middle, last), false, 'morning star');
+    });
+
+    test('isEveningStar: bullish, small gap-up middle, bearish close back into first body -> true', () => {
+      const first = { open: 100, high: 111, low: 99, close: 110 };
+      const middle = { open: 111, high: 113, low: 110, close: 112 };
+      const last = { open: 111, high: 112, low: 103, close: 104 };
+      assertEqual(isEveningStar(first, middle, last), true, 'evening star');
+    });
+
+    test('detectPatterns: reports one match per candle, prioritizing multi-candle patterns', () => {
+      const candles = [
+        { open: 110, high: 111, low: 99, close: 100 },   // part of morning star
+        { open: 99, high: 100, low: 97, close: 98 },     // part of morning star
+        { open: 99, high: 107, low: 98, close: 106 },    // completes morning star (index 2)
+        { open: 100, high: 102, low: 98, close: 100.05 } // doji (index 3)
+      ];
+      const results = detectPatterns(candles);
+      assertEqual(results, [
+        { index: 2, pattern: 'Morning Star', direction: 'bullish' },
+        { index: 3, pattern: 'Doji', direction: 'neutral' }
+      ], 'detected patterns');
     });
 
     const resultsEl = document.getElementById('results');
