@@ -678,7 +678,13 @@
         OHLC data (no key needed); stocks need the Twelve Data key from
         the Stocks section above (the same one used for stock
         trend/accuracy) &mdash; Finnhub's free plan doesn't include this
-        data, same limitation as elsewhere on this page.
+        data, same limitation as elsewhere on this page. Pick a time
+        range from the dropdown next to the symbol &mdash; crypto's "5
+        Minutes" option is as fine as CoinGecko's free tier goes (there's
+        no true 1-minute crypto data available here), and each of those
+        5-minute candles is really just a single price snapshot rather
+        than a real open/high/low/close bar; "1 Hour" aggregates twelve
+        of those snapshots into genuine candles instead.
       </p>
       <div class="row-inline">
         <select id="chart-asset-type">
@@ -1932,6 +1938,56 @@
       }));
     }
 
+    // Groups consecutive [timestamp_ms, price] points into
+    // `bucketMinutes`-wide OHLC candles. A bucket that only contains one
+    // source point (bucketMinutes equal to the source data's own
+    // spacing) ends up open === high === low === close — an honest
+    // snapshot of that one sample, not a bug — while a wider bucket
+    // aggregates several points into a real open/high/low/close bar.
+    function bucketPricePoints(points, bucketMinutes) {
+      const bucketMs = bucketMinutes * 60 * 1000;
+      const buckets = new Map();
+      for (const [ts, price] of points) {
+        const bucketStart = Math.floor(ts / bucketMs) * bucketMs;
+        if (!buckets.has(bucketStart)) {
+          buckets.set(bucketStart, { time: Math.floor(bucketStart / 1000), open: price, high: price, low: price, close: price });
+        } else {
+          const bucket = buckets.get(bucketStart);
+          bucket.high = Math.max(bucket.high, price);
+          bucket.low = Math.min(bucket.low, price);
+          bucket.close = price;
+        }
+      }
+      return Array.from(buckets.values()).sort((a, b) => a.time - b.time);
+    }
+
+    // CoinGecko's OHLC endpoint (fetchCryptoOhlc above) only goes down to
+    // 30-minute candles (at days=1) — it has no separate granularity
+    // parameter. Finer intraday bars instead come from CoinGecko's
+    // market_chart endpoint, which returns raw price points rather than
+    // OHLC bars: verified live against the API, days=1 gives 5-minute-
+    // spaced points — the finest resolution this free tier offers (true
+    // 1-minute crypto data isn't available here) — grouped into
+    // `bucketMinutes`-wide candles by bucketPricePoints above. Always
+    // fetches days=1 (~last 24h) regardless of bucket width, since that's
+    // the only window this free endpoint returns 5-minute points for; a
+    // wider `days` value here would just fall back to hourly (or daily)
+    // points and lose the sub-hourly detail bucketing depends on.
+    async function fetchCryptoIntraday(input, bucketMinutes) {
+      const tryFetch = id => fetchWithNetworkRetry(
+        `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(id)}/market_chart?vs_currency=usd&days=1`
+      );
+      let res = await tryFetch(input);
+      if (!res.ok) {
+        const resolvedId = await resolveCoinGeckoId(input);
+        if (!resolvedId) throw new Error(`Unknown CoinGecko id or ticker "${input}"`);
+        res = await tryFetch(resolvedId);
+        if (!res.ok) throw new Error('CoinGecko market data request failed: ' + res.status);
+      }
+      const data = await res.json();
+      return bucketPricePoints(data.prices || [], bucketMinutes);
+    }
+
     // `interval`/`outputsize` default to this app's original fixed
     // values (daily candles, ~3 months) so every other caller keeps
     // working exactly as it did before this was configurable.
@@ -2422,19 +2478,26 @@
       }
     }
 
-    // Time range + candle size, per asset type. CoinGecko's OHLC endpoint
-    // only takes a lookback window (`days`) — it auto-selects candle
-    // granularity from that (verified against the live API: 1-2 days ->
-    // 30-min candles, 3-30 days -> 4-hourly, 31-365 days -> 4-daily), so
-    // there's no independent "candle size" to pick for crypto the way
-    // Twelve Data's `interval` param provides for stocks. The first
-    // entry in each list is the default — matches this app's original
-    // fixed behavior (30 days for crypto, 90 daily bars for stocks)
-    // exactly, so loading a chart for the first time looks the same as
-    // it always did.
+    // Time range + candle size, per asset type. Entries with a `days`
+    // field go through fetchCryptoOhlc, which only takes a lookback
+    // window — it auto-selects candle granularity from that (verified
+    // against the live API: 1-2 days -> 30-min candles, 3-30 days ->
+    // 4-hourly, 31-365 days -> 4-daily). Entries with a `bucketMinutes`
+    // field go through fetchCryptoIntraday instead, for genuine
+    // minute/hour-scale candles CoinGecko's OHLC endpoint can't produce
+    // — see that function's comment for the free-tier limits involved
+    // (5 minutes is as fine as crypto data gets here; there's no true
+    // 1-minute crypto option). Twelve Data's `interval` param gives
+    // stocks real minute/hour granularity directly, no bucketing needed.
+    // The first entry in each list is the default — matches this app's
+    // original fixed behavior (30 days for crypto, 90 daily bars for
+    // stocks) exactly, so loading a chart for the first time looks the
+    // same as it always did.
     const CHART_INTERVALS = {
       crypto: [
         { label: '1 Month', days: 30 },
+        { label: '5 Minutes', bucketMinutes: 5 },
+        { label: '1 Hour', bucketMinutes: 60 },
         { label: '1 Day', days: 1 },
         { label: '1 Week', days: 7 },
         { label: '3 Months', days: 90 },
@@ -2443,12 +2506,41 @@
       ],
       stock: [
         { label: '3 Months', interval: '1day', outputsize: 90 },
+        { label: '1 Minute', interval: '1min', outputsize: 390 },
+        { label: '5 Minutes', interval: '5min', outputsize: 78 },
+        { label: '1 Hour', interval: '1h', outputsize: 168 },
         { label: '5 Days', interval: '30min', outputsize: 65 },
         { label: '1 Month', interval: '1day', outputsize: 22 },
         { label: '1 Year', interval: '1day', outputsize: 252 },
         { label: '5 Years', interval: '1week', outputsize: 260 }
       ]
     };
+
+    // Real candles/year for whichever interval preset a chart load just
+    // used — needed to annualize the opportunistic volatility snapshot
+    // in loadChart() correctly regardless of which time range/candle
+    // size was selected. (VOLATILITY_PERIODS_PER_YEAR further below is
+    // a flat per-asset-type constant that's only safe for
+    // ensureVolatilityCached, which always fetches its own fixed
+    // default granularity — not for this chart-driven snapshot, which
+    // can now be any of the presets above.) Approximate for stocks
+    // (252 trading days/year, 6.5-hour trading day) — consistent with
+    // this app's other disclosed simplifications, not meant to be exact
+    // to the minute.
+    const STOCK_PERIODS_PER_YEAR = {
+      '1min': 252 * 390, '5min': 252 * 78, '15min': 252 * 26, '30min': 252 * 13,
+      '45min': 252 * 390 / 45, '1h': 252 * 6.5, '2h': 252 * 3.25, '4h': 252 * 1.625,
+      '1day': 252, '1week': 52, '1month': 12
+    };
+
+    function periodsPerYearForChart(assetType, interval) {
+      if (assetType === 'stock') return STOCK_PERIODS_PER_YEAR[interval.interval] || 252;
+      if (interval.bucketMinutes != null) return Math.floor((365 * 24 * 60) / interval.bucketMinutes);
+      // Mirrors fetchCryptoOhlc's verified days->granularity mapping.
+      if (interval.days <= 2) return Math.floor((365 * 24 * 60) / 30);
+      if (interval.days <= 30) return Math.floor((365 * 24) / 4);
+      return Math.floor(365 / 4);
+    }
 
     // Rebuilds the interval dropdown for whichever asset type is
     // currently selected — crypto and stock have entirely different
@@ -2494,9 +2586,11 @@
 
       try {
         const normSymbol = assetType === 'stock' ? symbolInput.toUpperCase() : symbolInput.toLowerCase();
-        const candles = assetType === 'crypto'
-          ? await fetchCryptoOhlc(normSymbol, interval.days)
-          : await fetchStockOhlc(normSymbol, twelveDataKey, interval.interval, interval.outputsize);
+        const candles = assetType === 'stock'
+          ? await fetchStockOhlc(normSymbol, twelveDataKey, interval.interval, interval.outputsize)
+          : interval.bucketMinutes != null
+            ? await fetchCryptoIntraday(normSymbol, interval.bucketMinutes)
+            : await fetchCryptoOhlc(normSymbol, interval.days);
 
         if (candles.length === 0) {
           statusEl.textContent = 'No candle data available for that symbol.';
@@ -2510,7 +2604,7 @@
         // candles instead of triggering a second, redundant request.
         const volKey = paperPositionKey(assetType, normSymbol);
         if (volatilityCache[volKey] == null) {
-          const vol = historicalVolatility(candles.map(c => c.close), VOLATILITY_PERIODS_PER_YEAR[assetType]);
+          const vol = historicalVolatility(candles.map(c => c.close), periodsPerYearForChart(assetType, interval));
           if (vol != null && vol > 0) volatilityCache[volKey] = vol;
         }
 
@@ -2566,9 +2660,11 @@
       if (!lastChartType || !lastChartSymbol || !lastChartInterval || !candleSeries) return;
       try {
         const twelveDataKey = document.getElementById('twelvedata-key').value.trim();
-        const candles = lastChartType === 'crypto'
-          ? await fetchCryptoOhlc(lastChartSymbol, lastChartInterval.days)
-          : await fetchStockOhlc(lastChartSymbol, twelveDataKey, lastChartInterval.interval, lastChartInterval.outputsize);
+        const candles = lastChartType === 'stock'
+          ? await fetchStockOhlc(lastChartSymbol, twelveDataKey, lastChartInterval.interval, lastChartInterval.outputsize)
+          : lastChartInterval.bucketMinutes != null
+            ? await fetchCryptoIntraday(lastChartSymbol, lastChartInterval.bucketMinutes)
+            : await fetchCryptoOhlc(lastChartSymbol, lastChartInterval.days);
         if (candles.length === 0) return;
 
         candleSeries.setData(candles);
