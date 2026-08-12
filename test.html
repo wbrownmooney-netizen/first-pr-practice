@@ -63,7 +63,10 @@
       <code>buyPosition</code>/<code>sellPosition</code>/<code>realizedGain</code>/<code>holdingTimeBias</code>
       from <code>portfolio.js</code>, and <code>blackScholesPrice</code>/
       <code>decomposeOptionChange</code>/<code>optionPayoffAtExpiration</code>/
-      <code>optionBreakeven</code>/<code>optionRiskProfile</code> from
+      <code>optionBreakeven</code>/<code>optionRiskProfile</code>/
+      <code>combinedPayoffAtExpiration</code>/<code>bullCallSpreadRiskProfile</code>/
+      <code>bearPutSpreadRiskProfile</code>/<code>longStraddleRiskProfile</code>/
+      <code>coveredCallRiskProfile</code>/<code>protectivePutRiskProfile</code> from
       <code>options.js</code>, and
       <code>isDoji</code>/<code>isHammer</code>/<code>isShootingStar</code>/
       <code>isBullishEngulfing</code>/<code>isBearishEngulfing</code>/
@@ -410,6 +413,110 @@
         { maxGain: 10, maxGainBounded: true, maxLoss: 190, maxLossBounded: true },
         'short put risk profile'
       );
+    });
+
+    test('bullCallSpreadRiskProfile: net debit and capped width', () => {
+      // long $100 call @8, short $110 call @3 -> net debit 5, width 10, max gain 5
+      assertEqual(
+        bullCallSpreadRiskProfile(100, 8, 110, 3, 1),
+        { maxLoss: 5, maxLossBounded: true, maxGain: 5, maxGainBounded: true },
+        'bull call spread'
+      );
+    });
+
+    test('bullCallSpreadRiskProfile: scales linearly with quantity', () => {
+      assertEqual(
+        bullCallSpreadRiskProfile(100, 8, 110, 3, 2),
+        { maxLoss: 10, maxLossBounded: true, maxGain: 10, maxGainBounded: true },
+        'bull call spread x2'
+      );
+    });
+
+    test('bearPutSpreadRiskProfile: net debit and capped width', () => {
+      // long $100 put @8, short $90 put @3 -> net debit 5, width 10, max gain 5
+      assertEqual(
+        bearPutSpreadRiskProfile(100, 8, 90, 3, 1),
+        { maxLoss: 5, maxLossBounded: true, maxGain: 5, maxGainBounded: true },
+        'bear put spread'
+      );
+    });
+
+    test('longStraddleRiskProfile: max loss is both premiums, gain unbounded', () => {
+      assertEqual(
+        longStraddleRiskProfile(100, 6, 4, 1),
+        { maxLoss: 10, maxLossBounded: true, maxGain: null, maxGainBounded: false },
+        'long straddle'
+      );
+    });
+
+    test('longStraddleRiskProfile: scales linearly with quantity', () => {
+      assertEqual(
+        longStraddleRiskProfile(100, 6, 4, 2),
+        { maxLoss: 20, maxLossBounded: true, maxGain: null, maxGainBounded: false },
+        'long straddle x2'
+      );
+    });
+
+    test('coveredCallRiskProfile: capped gain (called away) and bounded loss', () => {
+      // spot avg cost 100, short $110 call @4 -> max gain (110-100+4)=14, max loss (100-4)=96
+      assertEqual(
+        coveredCallRiskProfile(100, 110, 4, 1),
+        { maxGain: 14, maxGainBounded: true, maxLoss: 96, maxLossBounded: true },
+        'covered call'
+      );
+    });
+
+    test('coveredCallRiskProfile: scales linearly with quantity', () => {
+      assertEqual(
+        coveredCallRiskProfile(100, 110, 4, 2),
+        { maxGain: 28, maxGainBounded: true, maxLoss: 192, maxLossBounded: true },
+        'covered call x2'
+      );
+    });
+
+    test('protectivePutRiskProfile: bounded loss (floored by the put), unbounded gain', () => {
+      // spot avg cost 100, long $90 put @3 -> max loss (100-90+3)=13
+      assertEqual(
+        protectivePutRiskProfile(100, 90, 3, 1),
+        { maxGain: null, maxGainBounded: false, maxLoss: 13, maxLossBounded: true },
+        'protective put'
+      );
+    });
+
+    test('protectivePutRiskProfile: scales linearly with quantity', () => {
+      assertEqual(
+        protectivePutRiskProfile(100, 90, 3, 2),
+        { maxGain: null, maxGainBounded: false, maxLoss: 26, maxLossBounded: true },
+        'protective put x2'
+      );
+    });
+
+    test('combinedPayoffAtExpiration: bull call spread matches bullCallSpreadRiskProfile max gain deep ITM', () => {
+      const legs = [
+        { optionType: 'call', strike: 100, premiumPaid: 8, quantity: 1, side: 'long' },
+        { optionType: 'call', strike: 110, premiumPaid: 3, quantity: 1, side: 'short' }
+      ];
+      assertEqual(combinedPayoffAtExpiration(legs, 120), 5, 'combined bull call spread');
+    });
+
+    test('combinedPayoffAtExpiration: bull call spread matches max loss deep OTM', () => {
+      const legs = [
+        { optionType: 'call', strike: 100, premiumPaid: 8, quantity: 1, side: 'long' },
+        { optionType: 'call', strike: 110, premiumPaid: 3, quantity: 1, side: 'short' }
+      ];
+      assertEqual(combinedPayoffAtExpiration(legs, 50), -5, 'combined bull call spread OTM');
+    });
+
+    test('combinedPayoffAtExpiration: covered call with spot leg matches coveredCallRiskProfile max gain', () => {
+      const legs = [{ optionType: 'call', strike: 110, premiumPaid: 4, quantity: 1, side: 'short' }];
+      const spotLeg = { avgCost: 100, quantity: 1 };
+      assertEqual(combinedPayoffAtExpiration(legs, 110, spotLeg), 14, 'combined covered call at strike');
+    });
+
+    test('combinedPayoffAtExpiration: covered call gain stays capped far above the strike', () => {
+      const legs = [{ optionType: 'call', strike: 110, premiumPaid: 4, quantity: 1, side: 'short' }];
+      const spotLeg = { avgCost: 100, quantity: 1 };
+      assertEqual(combinedPayoffAtExpiration(legs, 200, spotLeg), 14, 'combined covered call deep ITM');
     });
 
     test('isDoji: tiny body relative to range -> true', () => {

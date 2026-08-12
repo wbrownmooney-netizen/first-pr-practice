@@ -234,6 +234,7 @@
     50% { background: var(--alert-bg-strong); }
   }
   tr.mover-row { background: var(--mover-bg); }
+  tr.strategy-header td { background: var(--accent-tint); font-weight: 600; }
   .held-badge {
     display: inline-block;
     background: var(--accent-grad);
@@ -923,6 +924,22 @@
             otherwise it's also Naked, with a large (but bounded, since a
             price can't go below $0) potential loss.
           </p>
+          <p class="hint">
+            Two legs can also be combined into one named
+            <strong>strategy</strong> — the "Place strategy" picker below
+            the Buy/Sell buttons opens both at once, priced off a single
+            live quote: a <strong>Bull Call Spread</strong> buys a lower-strike
+            call and sells a higher-strike call, capping both cost and
+            upside; a <strong>Bear Put Spread</strong> is the mirror with
+            puts, for a bearish bet; a <strong>Long Straddle</strong> buys a
+            call and a put at the same strike, profiting from a big move in
+            either direction; a <strong>Covered Call</strong> sells a call
+            against stock/coin you hold (or this simulator buys the
+            shortfall for you) for income, capping upside; a
+            <strong>Protective Put</strong> buys a put against your holding
+            as downside insurance. Each shows its own combined payoff
+            diagram once placed.
+          </p>
           <dl>
             <dt>Premium</dt>
             <dd>What you pay to open a long position, or receive to open
@@ -1020,6 +1037,25 @@
         position (receive the premium) &mdash; see "New to options?"
         above for what that means and the risk involved.
       </p>
+
+      <div class="row-inline">
+        <select id="strategy-type">
+          <option value="">&mdash; Single leg (use Buy/Sell above) &mdash;</option>
+          <option value="bull_call_spread">Bull Call Spread</option>
+          <option value="bear_put_spread">Bear Put Spread</option>
+          <option value="long_straddle">Long Straddle</option>
+          <option value="covered_call">Covered Call</option>
+          <option value="protective_put">Protective Put</option>
+        </select>
+      </div>
+      <div class="row-inline" id="strategy-strike2-row" style="display:none;">
+        <input id="option-strike2-input" type="number" placeholder="Second strike price" min="0" step="any">
+      </div>
+      <p class="hint" id="strategy-hint" style="display:none;"></p>
+      <div class="row-inline">
+        <button id="place-strategy-btn" style="display:none;">Place strategy</button>
+      </div>
+
       <p id="option-status" class="status"></p>
       <div class="table-wrap">
         <table>
@@ -1075,11 +1111,19 @@
 
       <h3 style="font-size: 0.95rem; margin: 1.25rem 0 0.75rem;">Options</h3>
       <dl>
+        <dt>Bear Put Spread</dt>
+        <dd>Buy a put at a higher strike, sell a put at a lower strike,
+          same expiry &mdash; a bearish bet that caps both cost and
+          upside compared to a naked long put.</dd>
         <dt>Breakeven</dt>
         <dd>The underlying price at expiration where a position exactly
           breaks even &mdash; strike plus premium paid for a long call,
           strike minus premium paid for a long put. Shown on each open
           position's payoff diagram.</dd>
+        <dt>Bull Call Spread</dt>
+        <dd>Buy a call at a lower strike, sell a call at a higher strike,
+          same expiry &mdash; a bullish bet that caps both cost and
+          upside compared to a naked long call.</dd>
         <dt>Call</dt>
         <dd>A contract giving the right, but not the obligation, to buy
           the underlying at the strike price on or before expiration.
@@ -1094,6 +1138,11 @@
           held to satisfy assignment. Lower risk than a naked short call
           &mdash; you'd hand over stock/coin you already own instead of
           having to buy it at whatever price the market has moved to.</dd>
+        <dt>Covered Call</dt>
+        <dd>Sell a call against underlying you already hold (this
+          simulator buys any shortfall for you at the same live price).
+          Caps your upside at the strike plus the premium, in exchange
+          for income today; loss is bounded but not eliminated.</dd>
         <dt>Delta</dt>
         <dd>How much an option's value moves per $1 move in the
           underlying price. Labeled on the "Why did this change?"
@@ -1110,6 +1159,11 @@
         <dd>The standard names for simply buying a call or buying a
           put &mdash; "long" meaning you own the right, the same sense as
           owning a stock outright.</dd>
+        <dt>Long Straddle</dt>
+        <dd>Buy a call and a put at the same strike and expiry &mdash; a
+          bet on a big move in either direction. Loses the most (both
+          premiums combined) if the price sits right at the strike at
+          expiration; gain is theoretically unlimited.</dd>
         <dt>Naked</dt>
         <dd>A short call or put not backed by the underlying (call) or
           enough cash (put). Higher risk than Covered/Cash-secured &mdash;
@@ -1128,6 +1182,11 @@
           maximum possible <em>gain</em> is capped at the premium
           received, but loss isn't (unless the position is Covered or
           Cash-secured).</dd>
+        <dt>Protective Put</dt>
+        <dd>Buy a put against underlying you already hold (this simulator
+          buys any shortfall for you at the same live price), as downside
+          insurance. Floors your loss at the cost of the premium; upside
+          stays uncapped.</dd>
         <dt>Put</dt>
         <dd>A contract giving the right, but not the obligation, to sell
           the underlying at the strike price on or before expiration.
@@ -2602,6 +2661,51 @@
       `;
     }
 
+    // Shared SVG axis/gridline/path scaffold for a payoff diagram, given
+    // pre-computed {price, pl} points spanning the display range. Used
+    // by both payoffDiagramSvg (one leg) and combinedPayoffDiagramSvg
+    // (a strategy's legs summed together) so the ~30 lines of
+    // axis/gridline/path-building code exist in exactly one place.
+    // `refLines` are vertical dashed markers (e.g. strikes) as
+    // {price, label}; only ones inside the plotted range are drawn.
+    function payoffSvgScaffold(points, refLines, currentPrice) {
+      const plValues = points.map(p => p.pl);
+      const plMin = Math.min(...plValues, 0);
+      const plMax = Math.max(...plValues, 0);
+      const plRange = (plMax - plMin) || 1;
+      const rangeLow = points[0].price;
+      const rangeHigh = points[points.length - 1].price;
+      const priceRange = (rangeHigh - rangeLow) || 1;
+
+      const width = 320, height = 150, marginLeft = 50, marginRight = 12, marginTop = 14, marginBottom = 24;
+      const plotW = width - marginLeft - marginRight;
+      const plotH = height - marginTop - marginBottom;
+      const x = price => marginLeft + ((price - rangeLow) / priceRange) * plotW;
+      const y = pl => marginTop + (1 - (pl - plMin) / plRange) * plotH;
+
+      const colors = chartColors();
+      const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${x(p.price).toFixed(1)} ${y(p.pl).toFixed(1)}`).join(' ');
+      const refLinesSvg = refLines
+        .filter(r => r.price >= rangeLow && r.price <= rangeHigh)
+        .map(r => `
+          <line x1="${x(r.price).toFixed(1)}" y1="${marginTop}" x2="${x(r.price).toFixed(1)}" y2="${height - marginBottom}" stroke="${colors.grid}" stroke-width="1" stroke-dasharray="2,4"/>
+          <text x="${x(r.price).toFixed(1)}" y="${marginTop - 3}" font-size="8" fill="${colors.text}" text-anchor="middle">${escapeHtml(r.label)}</text>`)
+        .join('');
+
+      return `
+        <svg viewBox="0 0 ${width} ${height}" width="100%" style="max-width:360px; display:block;">
+          <line x1="${marginLeft}" y1="${y(0).toFixed(1)}" x2="${width - marginRight}" y2="${y(0).toFixed(1)}" stroke="${colors.grid}" stroke-width="1" stroke-dasharray="3,3"/>
+          ${refLinesSvg}
+          ${currentPrice != null ? `<line x1="${x(currentPrice).toFixed(1)}" y1="${marginTop}" x2="${x(currentPrice).toFixed(1)}" y2="${height - marginBottom}" stroke="${colors.up}" stroke-width="1" stroke-dasharray="2,2"/>
+          <text x="${x(currentPrice).toFixed(1)}" y="${height - marginBottom + 11}" font-size="8" fill="${colors.up}" text-anchor="middle">Now</text>` : ''}
+          <path d="${pathD}" fill="none" stroke="${colors.text}" stroke-width="2"/>
+          <text x="2" y="${marginTop + 8}" font-size="9" fill="${colors.text}">${fmtUsd(plMax)}</text>
+          <text x="2" y="${height - marginBottom}" font-size="9" fill="${colors.text}">${fmtUsd(plMin)}</text>
+          <text x="${marginLeft}" y="${height - 4}" font-size="9" fill="${colors.text}">${fmtUsd(rangeLow)}</text>
+          <text x="${width - marginRight}" y="${height - 4}" font-size="9" fill="${colors.text}" text-anchor="end">${fmtUsd(rangeHigh)}</text>
+        </svg>`;
+    }
+
     // Inline SVG payoff diagram for one long option position — profit/
     // loss at expiration across a range of hypothetical underlying
     // prices (centered on the live price if we have one, else the
@@ -2622,35 +2726,8 @@
         const price = rangeLow + (rangeHigh - rangeLow) * (i / steps);
         points.push({ price, pl: optionPayoffAtExpiration(kind, strike, premium, quantity, price, side) });
       }
-      const plValues = points.map(p => p.pl);
-      const plMin = Math.min(...plValues, 0);
-      const plMax = Math.max(...plValues, 0);
-      const plRange = (plMax - plMin) || 1;
-      const priceRange = (rangeHigh - rangeLow) || 1;
 
-      const width = 320, height = 150, marginLeft = 50, marginRight = 12, marginTop = 14, marginBottom = 24;
-      const plotW = width - marginLeft - marginRight;
-      const plotH = height - marginTop - marginBottom;
-      const x = price => marginLeft + ((price - rangeLow) / priceRange) * plotW;
-      const y = pl => marginTop + (1 - (pl - plMin) / plRange) * plotH;
-
-      const colors = chartColors();
-      const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${x(p.price).toFixed(1)} ${y(p.pl).toFixed(1)}`).join(' ');
-      const strikeInRange = strike >= rangeLow && strike <= rangeHigh;
-
-      const svg = `
-        <svg viewBox="0 0 ${width} ${height}" width="100%" style="max-width:360px; display:block;">
-          <line x1="${marginLeft}" y1="${y(0).toFixed(1)}" x2="${width - marginRight}" y2="${y(0).toFixed(1)}" stroke="${colors.grid}" stroke-width="1" stroke-dasharray="3,3"/>
-          ${strikeInRange ? `<line x1="${x(strike).toFixed(1)}" y1="${marginTop}" x2="${x(strike).toFixed(1)}" y2="${height - marginBottom}" stroke="${colors.grid}" stroke-width="1" stroke-dasharray="2,4"/>
-          <text x="${x(strike).toFixed(1)}" y="${marginTop - 3}" font-size="8" fill="${colors.text}" text-anchor="middle">Strike</text>` : ''}
-          ${currentPrice != null ? `<line x1="${x(currentPrice).toFixed(1)}" y1="${marginTop}" x2="${x(currentPrice).toFixed(1)}" y2="${height - marginBottom}" stroke="${colors.up}" stroke-width="1" stroke-dasharray="2,2"/>
-          <text x="${x(currentPrice).toFixed(1)}" y="${height - marginBottom + 11}" font-size="8" fill="${colors.up}" text-anchor="middle">Now</text>` : ''}
-          <path d="${pathD}" fill="none" stroke="${colors.text}" stroke-width="2"/>
-          <text x="2" y="${marginTop + 8}" font-size="9" fill="${colors.text}">${fmtUsd(plMax)}</text>
-          <text x="2" y="${height - marginBottom}" font-size="9" fill="${colors.text}">${fmtUsd(plMin)}</text>
-          <text x="${marginLeft}" y="${height - 4}" font-size="9" fill="${colors.text}">${fmtUsd(rangeLow)}</text>
-          <text x="${width - marginRight}" y="${height - 4}" font-size="9" fill="${colors.text}" text-anchor="end">${fmtUsd(rangeHigh)}</text>
-        </svg>`;
+      const svg = payoffSvgScaffold(points, [{ price: strike, label: 'Strike' }], currentPrice);
 
       const breakeven = optionBreakeven(kind, strike, premium);
       const risk = optionRiskProfile(kind, side, strike, premium, quantity);
@@ -2669,6 +2746,65 @@
           <strong>${maxGainText}</strong>. This assumes holding to
           expiration; closing early almost always plays out differently
           since time value hasn't fully decayed yet.
+        </p>`;
+    }
+
+    // Combined inline SVG payoff diagram for a group of option legs that
+    // share a strategyId (plus, for Covered Call/Protective Put, the
+    // paired spot position) — same rendering approach as
+    // payoffDiagramSvg, but the P/L curve is summed across every leg via
+    // combinedPayoffAtExpiration (options.js). `riskProfile` is passed
+    // in rather than computed here, since each of the five strategies
+    // has its own closed-form formula in options.js; this function only
+    // needs the resulting {maxGain, maxGainBounded, maxLoss,
+    // maxLossBounded} shape to label the diagram, not which strategy
+    // it's drawing. Breakevens are found numerically (a spread or
+    // straddle can cross zero at more than one price, unlike a single
+    // leg's closed-form optionBreakeven) by linear interpolation between
+    // the two sampled points straddling each sign change.
+    function combinedPayoffDiagramSvg(legs, spotLeg, riskProfile) {
+      const first = legs[0];
+      const currentPrice = paperLivePrices[paperPositionKey(first.assetType, first.symbol)];
+      const strikes = legs.map(l => l.strike);
+      const center = currentPrice != null ? currentPrice : (strikes.reduce((a, b) => a + b, 0) / strikes.length);
+      if (!(center > 0)) return '<p class="hint">Not enough price data yet for a payoff diagram.</p>';
+
+      const rangeLow = center * 0.5;
+      const rangeHigh = center * 1.5;
+      const steps = 60;
+      const points = [];
+      for (let i = 0; i <= steps; i++) {
+        const price = rangeLow + (rangeHigh - rangeLow) * (i / steps);
+        points.push({ price, pl: combinedPayoffAtExpiration(legs, price, spotLeg) });
+      }
+
+      const uniqueStrikes = [...new Set(strikes)].sort((a, b) => a - b);
+      const refLines = uniqueStrikes.map((s, i) => ({ price: s, label: uniqueStrikes.length > 1 ? `K${i + 1}` : 'Strike' }));
+      const svg = payoffSvgScaffold(points, refLines, currentPrice);
+
+      const breakevens = [];
+      for (let i = 1; i < points.length; i++) {
+        const a = points[i - 1], b = points[i];
+        if ((a.pl < 0 && b.pl >= 0) || (a.pl > 0 && b.pl <= 0)) {
+          const t = a.pl === b.pl ? 0 : -a.pl / (b.pl - a.pl);
+          breakevens.push(a.price + (b.price - a.price) * t);
+        }
+      }
+      const breakevenText = breakevens.length
+        ? breakevens.map(fmtUsd).join(' and ')
+        : 'none in the range shown';
+
+      const maxLossText = riskProfile.maxLossBounded ? fmtUsd(riskProfile.maxLoss) : 'theoretically unlimited';
+      const maxGainText = riskProfile.maxGainBounded ? fmtUsd(riskProfile.maxGain) : 'theoretically unlimited';
+
+      return `
+        ${svg}
+        <p class="hint" style="margin: 0.4rem 0 0;">
+          Breakeven at expiration: <strong>${breakevenText}</strong>.
+          Max loss: <strong>${maxLossText}</strong>. Max gain:
+          <strong>${maxGainText}</strong>. This assumes holding every leg
+          to expiration; closing early almost always plays out
+          differently since time value hasn't fully decayed yet.
         </p>`;
     }
 
@@ -2696,49 +2832,156 @@
         : '<span class="mover-badge" title="Not enough cash set aside to buy the underlying if assigned — this simulator does not model margin calls.">NAKED</span>';
     }
 
+    // One leg's own two-row block (data row + collapsible payoff/
+    // breakdown row) — unchanged output from before grouping existed,
+    // just extracted so renderOptions() can reuse it both for ordinary
+    // singleton positions and for each leg inside a grouped strategy.
+    function optionRowHtml(opt) {
+      const isShort = opt.side === 'short';
+      const value = optionCurrentValue(opt);
+      const totalPl = value != null
+        ? (isShort ? (opt.premiumPaid - value) : (value - opt.premiumPaid)) * opt.quantity
+        : null;
+      const plClass = totalPl == null ? 'flat' : totalPl >= 0 ? 'up' : 'down';
+      const daysLeft = Math.max(Math.ceil((opt.expiresAt - Date.now()) / (24 * 60 * 60 * 1000)), 0);
+      const sideLabel = isShort ? 'Short' : 'Long';
+      const contractLabel = `${opt.symbol.toUpperCase()} $${opt.strike} ${sideLabel} ${opt.optionType === 'call' ? 'Call' : 'Put'}`;
+      const premiumCell = `${fmtUsd(opt.premiumPaid)} <span class="hint">${isShort ? 'received' : 'paid'}</span>`;
+      return `
+        <tr>
+          <td>${optionCoverageBadge(opt)}${contractLabel}</td>
+          <td>${daysLeft > 0 ? daysLeft + 'd' : 'Expired'}</td>
+          <td class="num">${opt.quantity}</td>
+          <td class="num">${premiumCell}</td>
+          <td class="num">${value != null ? fmtUsd(value) : 'n/a'}</td>
+          <td class="num ${plClass}">${totalPl != null ? fmtUsd(totalPl) : 'n/a'}</td>
+          <td class="num"><button class="ghost" data-close-option="${opt.id}">Close</button></td>
+        </tr>
+        <tr>
+          <td colspan="7" style="padding-top:0; border-bottom: none;">
+            <details>
+              <summary class="hint" style="cursor:pointer;">Payoff diagram at expiration</summary>
+              <div style="margin: 0.5rem 0 0.25rem;">
+                ${payoffDiagramSvg(opt)}
+              </div>
+            </details>
+            <details>
+              <summary class="hint" style="cursor:pointer;">Why did this change?</summary>
+              <div class="hint" style="margin: 0.5rem 0 0.25rem; line-height: 1.8;">
+                ${optionBreakdownHtml(opt)}
+              </div>
+            </details>
+          </td>
+        </tr>`;
+    }
+
+    // The live aggregate spot position backing a Covered Call/Protective
+    // Put, or null if none is currently held — same lookup
+    // optionCoverageBadge already uses. Spot is never reserved/tagged
+    // (see plan notes), so this always reflects the *current* holding,
+    // not what was held when the strategy was placed.
+    function liveSpotLeg(assetType, symbol) {
+      const pos = paperState.positions[paperPositionKey(assetType, symbol)];
+      return (pos && pos.quantity > 0) ? pos : null;
+    }
+
+    // Routes to the right closed-form risk-profile formula (options.js)
+    // for a named strategy's group of legs, so renderOptions() doesn't
+    // need to know each strategy's math, only its shape.
+    function computeStrategyRiskProfile(strategyName, legs, spotLeg) {
+      const qty = legs[0].quantity;
+      if (strategyName === 'Bull Call Spread') {
+        const longLeg = legs.find(l => l.side === 'long'), shortLeg = legs.find(l => l.side === 'short');
+        return bullCallSpreadRiskProfile(longLeg.strike, longLeg.premiumPaid, shortLeg.strike, shortLeg.premiumPaid, qty);
+      }
+      if (strategyName === 'Bear Put Spread') {
+        const longLeg = legs.find(l => l.side === 'long'), shortLeg = legs.find(l => l.side === 'short');
+        return bearPutSpreadRiskProfile(longLeg.strike, longLeg.premiumPaid, shortLeg.strike, shortLeg.premiumPaid, qty);
+      }
+      if (strategyName === 'Long Straddle') {
+        const callLeg = legs.find(l => l.optionType === 'call'), putLeg = legs.find(l => l.optionType === 'put');
+        return longStraddleRiskProfile(callLeg.strike, callLeg.premiumPaid, putLeg.premiumPaid, qty);
+      }
+      if (strategyName === 'Covered Call') {
+        return coveredCallRiskProfile(spotLeg.avgCost, legs[0].strike, legs[0].premiumPaid, qty);
+      }
+      if (strategyName === 'Protective Put') {
+        return protectivePutRiskProfile(spotLeg.avgCost, legs[0].strike, legs[0].premiumPaid, qty);
+      }
+      return null;
+    }
+
+    // Groups paperState.options by strategyId so a spread/straddle/
+    // covered-call/protective-put placed via placeStrategy() renders as
+    // one named block with a combined payoff diagram, instead of
+    // independent unrelated rows. Untagged legs (ordinary Buy/Sell) fall
+    // into their own singleton group keyed by id — byte-identical output
+    // to before grouping existed. If the user closes one leg of a
+    // multi-leg group, the remaining leg(s) simply form a smaller group
+    // next render (a lone remaining leg renders as an ordinary singleton
+    // row, same as any other single-leg position).
     function renderOptions() {
       const tbody = document.getElementById('options-rows');
       if (paperState.options.length === 0) {
         tbody.innerHTML = '<tr><td colspan="7" class="status">No option positions yet.</td></tr>';
         return;
       }
-      tbody.innerHTML = paperState.options.map(opt => {
-        const isShort = opt.side === 'short';
-        const value = optionCurrentValue(opt);
-        const totalPl = value != null
-          ? (isShort ? (opt.premiumPaid - value) : (value - opt.premiumPaid)) * opt.quantity
+
+      const groups = [];
+      const groupIndex = new Map();
+      paperState.options.forEach(opt => {
+        const key = opt.strategyId || opt.id;
+        if (!groupIndex.has(key)) {
+          groupIndex.set(key, groups.length);
+          groups.push([]);
+        }
+        groups[groupIndex.get(key)].push(opt);
+      });
+
+      tbody.innerHTML = groups.map(group => {
+        const first = group[0];
+        const legRows = group.map(optionRowHtml).join('');
+
+        // Covered Call/Protective Put place only one tagged option leg
+        // (spot is never tagged) — still shown combined, but only while
+        // the live spot position backing it actually exists.
+        const isCoveredStrategy = group.length === 1 &&
+          (first.strategyName === 'Covered Call' || first.strategyName === 'Protective Put');
+        const spotLeg = isCoveredStrategy ? liveSpotLeg(first.assetType, first.symbol) : null;
+        const showCombined = group.length > 1 || (isCoveredStrategy && spotLeg);
+
+        if (!showCombined) return legRows;
+
+        const values = group.map(optionCurrentValue);
+        const spotPrice = paperLivePrices[paperPositionKey(first.assetType, first.symbol)];
+        const optionsPl = values.every(v => v != null)
+          ? group.reduce((sum, opt, i) => sum + (opt.side === 'short' ? (opt.premiumPaid - values[i]) : (values[i] - opt.premiumPaid)) * opt.quantity, 0)
           : null;
-        const plClass = totalPl == null ? 'flat' : totalPl >= 0 ? 'up' : 'down';
-        const daysLeft = Math.max(Math.ceil((opt.expiresAt - Date.now()) / (24 * 60 * 60 * 1000)), 0);
-        const sideLabel = isShort ? 'Short' : 'Long';
-        const contractLabel = `${opt.symbol.toUpperCase()} $${opt.strike} ${sideLabel} ${opt.optionType === 'call' ? 'Call' : 'Put'}`;
-        const premiumCell = `${fmtUsd(opt.premiumPaid)} <span class="hint">${isShort ? 'received' : 'paid'}</span>`;
+        const spotPl = spotLeg && spotPrice != null ? (spotPrice - spotLeg.avgCost) * spotLeg.quantity : (spotLeg ? null : 0);
+        const combinedPl = (optionsPl != null && spotPl != null) ? optionsPl + spotPl : null;
+        const plClass = combinedPl == null ? 'flat' : combinedPl >= 0 ? 'up' : 'down';
+        const legWord = group.length > 1 ? `${group.length} legs` : '1 leg';
+        const metaText = spotLeg ? `${legWord} + underlying` : legWord;
+
+        const riskProfile = computeStrategyRiskProfile(first.strategyName, group, spotLeg);
+
         return `
-          <tr>
-            <td>${optionCoverageBadge(opt)}${contractLabel}</td>
-            <td>${daysLeft > 0 ? daysLeft + 'd' : 'Expired'}</td>
-            <td class="num">${opt.quantity}</td>
-            <td class="num">${premiumCell}</td>
-            <td class="num">${value != null ? fmtUsd(value) : 'n/a'}</td>
-            <td class="num ${plClass}">${totalPl != null ? fmtUsd(totalPl) : 'n/a'}</td>
-            <td class="num"><button class="ghost" data-close-option="${opt.id}">Close</button></td>
+          <tr class="strategy-header">
+            <td colspan="5">${escapeHtml(first.strategyName)} <span class="hint" style="font-weight:400;">(${metaText})</span></td>
+            <td class="num ${plClass}">${combinedPl != null ? fmtUsd(combinedPl) : 'n/a'}</td>
+            <td></td>
           </tr>
           <tr>
             <td colspan="7" style="padding-top:0; border-bottom: none;">
               <details>
-                <summary class="hint" style="cursor:pointer;">Payoff diagram at expiration</summary>
+                <summary class="hint" style="cursor:pointer;">Combined payoff diagram at expiration</summary>
                 <div style="margin: 0.5rem 0 0.25rem;">
-                  ${payoffDiagramSvg(opt)}
-                </div>
-              </details>
-              <details>
-                <summary class="hint" style="cursor:pointer;">Why did this change?</summary>
-                <div class="hint" style="margin: 0.5rem 0 0.25rem; line-height: 1.8;">
-                  ${optionBreakdownHtml(opt)}
+                  ${riskProfile ? combinedPayoffDiagramSvg(group, spotLeg, riskProfile) : ''}
                 </div>
               </details>
             </td>
-          </tr>`;
+          </tr>
+          ${legRows}`;
       }).join('');
     }
 
@@ -3048,6 +3291,162 @@
       }
     }
 
+    function nextStrategyId() {
+      return 'strat_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    }
+
+    const STRATEGY_NAMES = {
+      bull_call_spread: 'Bull Call Spread',
+      bear_put_spread: 'Bear Put Spread',
+      long_straddle: 'Long Straddle',
+      covered_call: 'Covered Call',
+      protective_put: 'Protective Put'
+    };
+
+    // One function for all five named strategies — reads the shared
+    // order-form fields, fetches the underlying price once (every leg's
+    // premium comes from this same S, so the whole placement is atomic
+    // against a single network call), computes each leg, and for
+    // Covered Call/Protective Put auto-buys any shortfall in the
+    // underlying at that same S rather than blocking with an error.
+    // Cash impact across every leg (and any spot purchase) is summed
+    // before anything is applied, so an insufficient-cash strategy is
+    // rejected as a whole rather than partially placed.
+    async function placeStrategy(type) {
+      const statusEl = document.getElementById('option-status');
+      const info = STRATEGY_INFO[type];
+      if (!info) return;
+
+      const assetType = document.getElementById('option-asset-type').value;
+      const symbolInput = document.getElementById('option-symbol-input').value.trim();
+      const strike = parseFloat(document.getElementById('option-strike-input').value);
+      const strike2 = parseFloat(document.getElementById('option-strike2-input').value);
+      const days = parseFloat(document.getElementById('option-days-input').value);
+      const quantity = parseFloat(document.getElementById('option-quantity-input').value);
+      const key = document.getElementById('finnhub-key').value.trim();
+
+      if (!symbolInput || !strike || strike <= 0 || !days || days <= 0 || !quantity || quantity <= 0) {
+        statusEl.textContent = 'Enter a symbol, strike, days to expiry, and a positive quantity.';
+        statusEl.className = 'status error';
+        return;
+      }
+      if (info.needsStrike2 && (!strike2 || strike2 <= 0)) {
+        statusEl.textContent = 'Enter a second strike price for this spread.';
+        statusEl.className = 'status error';
+        return;
+      }
+      if (type === 'bull_call_spread' && strike2 <= strike) {
+        statusEl.textContent = 'Second strike must be higher than the first for a Bull Call Spread.';
+        statusEl.className = 'status error';
+        return;
+      }
+      if (type === 'bear_put_spread' && strike2 >= strike) {
+        statusEl.textContent = 'Second strike must be lower than the first for a Bear Put Spread.';
+        statusEl.className = 'status error';
+        return;
+      }
+
+      statusEl.textContent = 'Fetching live price…';
+      statusEl.className = 'status';
+
+      try {
+        const normSymbol = assetType === 'stock' ? symbolInput.toUpperCase() : symbolInput.toLowerCase();
+        const S = await fetchPaperPrice(assetType, normSymbol, key);
+        const T = days / 365;
+        const sigma = OPTION_VOLATILITY[assetType];
+        const expiresAt = Date.now() + days * 24 * 60 * 60 * 1000;
+
+        // legs: array of { optionType, side, strike, premium }. spotBuy:
+        // { shortfall, positionKey } if Covered Call/Protective Put needs
+        // to top up the underlying, else null.
+        let legs = [];
+        let spotBuy = null;
+
+        if (type === 'bull_call_spread') {
+          legs = [
+            { optionType: 'call', side: 'long', strike, premium: blackScholesPrice('call', S, strike, T, RISK_FREE_RATE, sigma) },
+            { optionType: 'call', side: 'short', strike: strike2, premium: blackScholesPrice('call', S, strike2, T, RISK_FREE_RATE, sigma) }
+          ];
+        } else if (type === 'bear_put_spread') {
+          legs = [
+            { optionType: 'put', side: 'long', strike, premium: blackScholesPrice('put', S, strike, T, RISK_FREE_RATE, sigma) },
+            { optionType: 'put', side: 'short', strike: strike2, premium: blackScholesPrice('put', S, strike2, T, RISK_FREE_RATE, sigma) }
+          ];
+        } else if (type === 'long_straddle') {
+          legs = [
+            { optionType: 'call', side: 'long', strike, premium: blackScholesPrice('call', S, strike, T, RISK_FREE_RATE, sigma) },
+            { optionType: 'put', side: 'long', strike, premium: blackScholesPrice('put', S, strike, T, RISK_FREE_RATE, sigma) }
+          ];
+        } else if (type === 'covered_call' || type === 'protective_put') {
+          const optionType = type === 'covered_call' ? 'call' : 'put';
+          const side = type === 'covered_call' ? 'short' : 'long';
+          legs = [{ optionType, side, strike, premium: blackScholesPrice(optionType, S, strike, T, RISK_FREE_RATE, sigma) }];
+
+          const posKey = paperPositionKey(assetType, normSymbol);
+          const held = paperState.positions[posKey] ? paperState.positions[posKey].quantity : 0;
+          if (held < quantity) {
+            spotBuy = { shortfall: quantity - held, positionKey: posKey };
+          }
+        }
+
+        const optionsCashDelta = legs.reduce((sum, leg) =>
+          sum + (leg.side === 'short' ? leg.premium : -leg.premium) * quantity, 0);
+        const spotCost = spotBuy ? spotBuy.shortfall * S : 0;
+        const netCashDelta = optionsCashDelta - spotCost;
+
+        if (netCashDelta < 0 && -netCashDelta > paperState.cash) {
+          statusEl.textContent = `Not enough cash: need ${fmtUsd(-netCashDelta)}, have ${fmtUsd(paperState.cash)}.`;
+          statusEl.className = 'status error';
+          return;
+        }
+
+        const strategyId = nextStrategyId();
+        const strategyName = STRATEGY_NAMES[type];
+
+        if (spotBuy) {
+          paperState.positions[spotBuy.positionKey] = buyPosition(paperState.positions[spotBuy.positionKey], spotBuy.shortfall, S);
+          paperState.cash -= spotCost;
+          paperState.history.push({
+            time: Date.now(), action: 'buy', type: assetType, symbol: normSymbol,
+            quantity: spotBuy.shortfall, price: S, strategyName
+          });
+        }
+
+        legs.forEach(leg => {
+          paperState.options.push({
+            id: nextOptionId(),
+            assetType,
+            symbol: normSymbol,
+            optionType: leg.optionType,
+            side: leg.side,
+            strike: leg.strike,
+            quantity,
+            premiumPaid: leg.premium,
+            underlyingPriceAtOpen: S,
+            openedAt: Date.now(),
+            expiresAt,
+            strategyId,
+            strategyName
+          });
+          paperState.history.push({
+            time: Date.now(), action: leg.side === 'short' ? 'write-option' : 'buy-option', type: assetType, symbol: normSymbol,
+            quantity, price: leg.premium, strategyName
+          });
+        });
+
+        paperState.cash += optionsCashDelta;
+
+        savePaperState();
+        renderPaperAll();
+        const spotNote = spotBuy ? ` Also bought ${spotBuy.shortfall} ${normSymbol} at ${fmtUsd(S)} to cover the strategy.` : '';
+        statusEl.textContent = `Placed ${strategyName}: ${quantity} contract(s) on ${normSymbol}.${spotNote}`;
+        statusEl.className = 'status';
+      } catch (err) {
+        statusEl.textContent = "Couldn't place strategy: " + err.message;
+        statusEl.className = 'status error';
+      }
+    }
+
     // Closing a long sells it back (credits cash, same as before). Closing
     // a short buys it back (debits cash) — if the position lost enough
     // that the buyback costs more than the available cash, cash simply
@@ -3095,6 +3494,40 @@
 
     document.getElementById('option-buy-btn').addEventListener('click', () => placeOptionTrade('long'));
     document.getElementById('option-sell-btn').addEventListener('click', () => placeOptionTrade('short'));
+
+    // Per-strategy hint text and which fields it actually needs — legs
+    // for a named strategy are fixed call/put types (not user-chosen),
+    // so the single-leg Call/Put select and Buy/Sell buttons are hidden
+    // whenever a real strategy is picked, and only the spread
+    // strategies need a second strike.
+    const STRATEGY_INFO = {
+      bull_call_spread: { needsStrike2: true, hint: 'Buys a call at your first (lower) strike and sells a call at your second (higher) strike, same expiry. Caps both your cost and your upside compared to a naked long call — cheaper, but with a ceiling.' },
+      bear_put_spread: { needsStrike2: true, hint: 'Buys a put at your first (higher) strike and sells a put at your second (lower) strike, same expiry. Caps both your cost and your upside compared to a naked long put.' },
+      long_straddle: { needsStrike2: false, hint: 'Buys a call and a put at the same strike and expiry. Profits from a big move in either direction; loses the most (both premiums) if the price sits right at the strike at expiration.' },
+      covered_call: { needsStrike2: false, hint: 'Sells a call against the underlying — if you don\'t already hold enough, this also buys the shortfall at the same live price. Caps your upside at the strike (plus the premium), in exchange for income today.' },
+      protective_put: { needsStrike2: false, hint: 'Buys a put against the underlying — if you don\'t already hold enough, this also buys the shortfall at the same live price. Floors your downside at the strike, at the cost of the premium.' }
+    };
+
+    function updateStrategyFormUi() {
+      const type = document.getElementById('strategy-type').value;
+      const info = STRATEGY_INFO[type];
+      const active = !!info;
+
+      document.getElementById('strategy-strike2-row').style.display = (active && info.needsStrike2) ? '' : 'none';
+      document.getElementById('strategy-hint').style.display = active ? '' : 'none';
+      document.getElementById('strategy-hint').textContent = active ? info.hint : '';
+      document.getElementById('place-strategy-btn').style.display = active ? '' : 'none';
+
+      // Single-leg controls only make sense when no strategy is picked —
+      // hidden individually rather than by parent row, since the asset
+      // type/symbol fields in the same rows are still needed either way.
+      document.getElementById('option-type').style.display = active ? 'none' : '';
+      document.getElementById('option-buy-btn').style.display = active ? 'none' : '';
+      document.getElementById('option-sell-btn').style.display = active ? 'none' : '';
+    }
+
+    document.getElementById('strategy-type').addEventListener('change', updateStrategyFormUi);
+    document.getElementById('place-strategy-btn').addEventListener('click', () => placeStrategy(document.getElementById('strategy-type').value));
     document.getElementById('options-rows').addEventListener('click', e => {
       const btn = e.target.closest('[data-close-option]');
       if (!btn) return;

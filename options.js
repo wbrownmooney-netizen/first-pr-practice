@@ -74,6 +74,75 @@ function optionRiskProfile(kind, side, strike, premiumPaid, quantity) {
     : { maxGain: totalPremium, maxGainBounded: true, maxLoss: boundedGain, maxLossBounded: true };
 }
 
+// Combined profit/loss at expiration for a group of option legs, plus
+// optionally one spot (underlying) holding — for strategies like a
+// Covered Call or Protective Put, where P/L includes the stock/coin
+// itself, not just the option. Spot P/L is unrealized:
+// (underlyingPrice - avgCost) * quantity, the same math the rest of
+// this app already uses for unrealized spot P/L. A spread or straddle
+// just omits `spotLeg`. Each entry in `optionLegs` uses `optionType`
+// (not `kind`) deliberately — it's the same field name
+// `paperState.options` entries already use, so a group of legs pulled
+// straight from paperState can be passed in with no remapping.
+function combinedPayoffAtExpiration(optionLegs, underlyingPrice, spotLeg) {
+  const optionsTotal = optionLegs.reduce((sum, leg) =>
+    sum + optionPayoffAtExpiration(leg.optionType, leg.strike, leg.premiumPaid, leg.quantity, underlyingPrice, leg.side), 0);
+  const spotTotal = spotLeg ? (underlyingPrice - spotLeg.avgCost) * spotLeg.quantity : 0;
+  return optionsTotal + spotTotal;
+}
+
+// Five named strategies' best/worst-case P/L at expiration, computed
+// analytically per strategy shape rather than estimated numerically —
+// same reasoning as optionRiskProfile: every other figure on this page
+// is exact math wherever an exact answer exists, and each of these has
+// a standard closed-form result. All return the same
+// {maxGain, maxGainBounded, maxLoss, maxLossBounded} shape
+// optionRiskProfile uses, so display code never has to branch on shape.
+
+// Long the lower strike (K1) call, short the higher strike (K2) call,
+// same expiry. Caps both cost and upside compared to a naked long call.
+function bullCallSpreadRiskProfile(longStrike, longPremium, shortStrike, shortPremium, quantity) {
+  const netDebit = (longPremium - shortPremium) * quantity;
+  const width = (shortStrike - longStrike) * quantity;
+  return { maxLoss: netDebit, maxLossBounded: true, maxGain: width - netDebit, maxGainBounded: true };
+}
+
+// Long the higher strike (K1) put, short the lower strike (K2) put,
+// same expiry. Caps both cost and upside compared to a naked long put.
+function bearPutSpreadRiskProfile(longStrike, longPremium, shortStrike, shortPremium, quantity) {
+  const netDebit = (longPremium - shortPremium) * quantity;
+  const width = (longStrike - shortStrike) * quantity;
+  return { maxLoss: netDebit, maxLossBounded: true, maxGain: width - netDebit, maxGainBounded: true };
+}
+
+// Long a call and a put at the same strike and expiry — bets on a big
+// move in either direction. Max loss (both premiums) occurs exactly at
+// the strike, where both legs expire worthless; max gain is unbounded
+// since the long call dominates as the price rises without limit.
+function longStraddleRiskProfile(strike, callPremium, putPremium, quantity) {
+  const totalPremium = (callPremium + putPremium) * quantity;
+  return { maxLoss: totalPremium, maxLossBounded: true, maxGain: null, maxGainBounded: false };
+}
+
+// Own the underlying, sell a call against it. Max gain is capped at
+// being "called away" at the strike (plus the premium kept); max loss
+// is bounded (not eliminated) since the premium only partially offsets
+// the stock falling all the way to $0.
+function coveredCallRiskProfile(spotAvgCost, callStrike, callPremium, quantity) {
+  const maxGain = ((callStrike - spotAvgCost) + callPremium) * quantity;
+  const maxLoss = (spotAvgCost - callPremium) * quantity;
+  return { maxGain, maxGainBounded: true, maxLoss, maxLossBounded: true };
+}
+
+// Own the underlying, buy a put as insurance. Max loss is bounded — the
+// put floors how far down the combined position can go, at the cost of
+// the premium; max gain is unbounded, since the stock's upside is
+// uncapped and the put simply expires worthless.
+function protectivePutRiskProfile(spotAvgCost, putStrike, putPremium, quantity) {
+  const maxLoss = ((spotAvgCost - putStrike) + putPremium) * quantity;
+  return { maxGain: null, maxGainBounded: false, maxLoss, maxLossBounded: true };
+}
+
 // Educational breakdown of *why* an option's value moved between two
 // points in time. Since this simulator holds volatility fixed per asset
 // class, the only two things that actually change between opening and
