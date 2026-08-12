@@ -63,7 +63,8 @@
       <code>buyPosition</code>/<code>sellPosition</code>/<code>realizedGain</code>/<code>holdingTimeBias</code>
       from <code>portfolio.js</code>, and <code>blackScholesPrice</code>/
       <code>decomposeOptionChange</code>/<code>optionPayoffAtExpiration</code>/
-      <code>optionBreakeven</code> from <code>options.js</code>, and
+      <code>optionBreakeven</code>/<code>optionRiskProfile</code> from
+      <code>options.js</code>, and
       <code>isDoji</code>/<code>isHammer</code>/<code>isShootingStar</code>/
       <code>isBullishEngulfing</code>/<code>isBearishEngulfing</code>/
       <code>isMorningStar</code>/<code>isEveningStar</code>/<code>detectPatterns</code>
@@ -355,6 +356,60 @@
     test('optionBreakeven: payoff at the breakeven price is exactly zero', () => {
       const breakeven = optionBreakeven('call', 100, 5);
       assertApprox(optionPayoffAtExpiration('call', 100, 5, 2, breakeven), 0, 1e-9, 'payoff at breakeven');
+    });
+
+    test('optionPayoffAtExpiration: side defaults to long when omitted', () => {
+      assertEqual(optionPayoffAtExpiration('call', 100, 5, 1, 120), 15, 'default side');
+    });
+
+    test('optionPayoffAtExpiration: short call, underlying above strike -> mirrors the long loss', () => {
+      // Long call here would be +15 (120-100-5); short is the exact mirror.
+      assertEqual(optionPayoffAtExpiration('call', 100, 5, 1, 120, 'short'), -15, 'short call payoff');
+    });
+
+    test('optionPayoffAtExpiration: short call, underlying below strike -> keeps the premium', () => {
+      assertEqual(optionPayoffAtExpiration('call', 100, 5, 1, 80, 'short'), 5, 'short call payoff');
+    });
+
+    test('optionPayoffAtExpiration: short put, underlying below strike -> mirrors the long gain', () => {
+      // Long put here would be +15 (100-80-5); short is the exact mirror.
+      assertEqual(optionPayoffAtExpiration('put', 100, 5, 1, 80, 'short'), -15, 'short put payoff');
+    });
+
+    test('optionPayoffAtExpiration: short position scales linearly with quantity', () => {
+      assertEqual(optionPayoffAtExpiration('call', 100, 5, 3, 120, 'short'), -45, 'short call payoff x3');
+    });
+
+    test('optionRiskProfile: long call -> bounded loss (premium), unbounded gain', () => {
+      assertEqual(
+        optionRiskProfile('call', 'long', 100, 5, 2),
+        { maxLoss: 10, maxLossBounded: true, maxGain: null, maxGainBounded: false },
+        'long call risk profile'
+      );
+    });
+
+    test('optionRiskProfile: long put -> bounded loss (premium), bounded gain (strike minus premium)', () => {
+      assertEqual(
+        optionRiskProfile('put', 'long', 100, 5, 2),
+        { maxLoss: 10, maxLossBounded: true, maxGain: 190, maxGainBounded: true },
+        'long put risk profile'
+      );
+    });
+
+    test('optionRiskProfile: short call -> bounded gain (premium), unbounded loss', () => {
+      assertEqual(
+        optionRiskProfile('call', 'short', 100, 5, 2),
+        { maxGain: 10, maxGainBounded: true, maxLoss: null, maxLossBounded: false },
+        'short call risk profile'
+      );
+    });
+
+    test('optionRiskProfile: short put -> bounded gain (premium), bounded loss (strike minus premium)', () => {
+      assertEqual(
+        optionRiskProfile('put', 'short', 100, 5, 2),
+        { maxGain: 10, maxGainBounded: true, maxLoss: 190, maxLossBounded: true },
+        'short put risk profile'
+      );
     });
 
     test('isDoji: tiny body relative to range -> true', () => {

@@ -30,22 +30,48 @@ function blackScholesPrice(kind, S, K, T, r, sigma) {
   return K * Math.exp(-r * T) * normCdf(-d2) - S * normCdf(-d1);
 }
 
-// Profit/loss for one long position (this simulator only ever buys,
-// never writes/sells, options — "long call"/"long put" is every
-// position it can hold) at expiration, for a hypothetical underlying
-// price. Reuses blackScholesPrice's T<=0 branch (exact intrinsic value)
-// since volatility/rate stop mattering once time to expiry hits zero —
+// Profit/loss for one position at expiration, for a hypothetical
+// underlying price. `side` defaults to 'long' (buying — this was the
+// only side the simulator supported before short/writing positions
+// were added) so every existing call site and test keeps working
+// unchanged. A short position is the mirror image: it profits exactly
+// where a long loses, since selling collects the premium up front and
+// owes the intrinsic value at expiration instead of receiving it.
+// Reuses blackScholesPrice's T<=0 branch (exact intrinsic value) since
+// volatility/rate stop mattering once time to expiry hits zero —
 // passing 0 for both is safe, not a placeholder guess.
-function optionPayoffAtExpiration(kind, strike, premiumPaid, quantity, underlyingPrice) {
+function optionPayoffAtExpiration(kind, strike, premiumPaid, quantity, underlyingPrice, side) {
   const intrinsic = blackScholesPrice(kind, underlyingPrice, strike, 0, 0, 0);
-  return (intrinsic - premiumPaid) * quantity;
+  const longPayoff = (intrinsic - premiumPaid) * quantity;
+  return side === 'short' ? -longPayoff : longPayoff;
 }
 
-// The underlying price at which a long position neither gains nor
-// loses — independent of quantity, since quantity only scales the P/L
-// curve without shifting where it crosses zero.
+// The underlying price at which a position neither gains nor loses —
+// the same for long and short (only the P/L sign on either side of it
+// flips), and independent of quantity, since quantity only scales the
+// P/L curve without shifting where it crosses zero.
 function optionBreakeven(kind, strike, premiumPaid) {
   return kind === 'call' ? strike + premiumPaid : strike - premiumPaid;
+}
+
+// Best/worst case P/L at expiration for one position — used to label a
+// payoff diagram honestly, especially the cases where risk is
+// unbounded (a naked short call can lose an unlimited amount as the
+// underlying rises; a naked short put's loss is large but bounded,
+// since the underlying can't fall below $0). Unbounded values are
+// returned as null with the matching `*Bounded: false` flag, rather
+// than Infinity, so callers never have to special-case a magic number.
+function optionRiskProfile(kind, side, strike, premiumPaid, quantity) {
+  const totalPremium = premiumPaid * quantity;
+  const boundedGain = (strike * quantity) - totalPremium;
+  if (side === 'long') {
+    return kind === 'call'
+      ? { maxLoss: totalPremium, maxLossBounded: true, maxGain: null, maxGainBounded: false }
+      : { maxLoss: totalPremium, maxLossBounded: true, maxGain: boundedGain, maxGainBounded: true };
+  }
+  return kind === 'call'
+    ? { maxGain: totalPremium, maxGainBounded: true, maxLoss: null, maxLossBounded: false }
+    : { maxGain: totalPremium, maxGainBounded: true, maxLoss: boundedGain, maxLossBounded: true };
 }
 
 // Educational breakdown of *why* an option's value moved between two

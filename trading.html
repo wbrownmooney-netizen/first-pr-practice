@@ -904,13 +904,31 @@
             open positions below. "Long" here just means you bought it
             (own the right), same sense as owning a stock outright.
           </p>
+          <p class="hint">
+            You can also do the opposite: <strong>selling</strong> (or
+            "writing") a call or put opens a <strong>Short Call</strong>
+            or <strong>Short Put</strong> instead &mdash; you receive the
+            premium up front rather than paying it, but the risk is
+            flipped too. A short call backed by enough of the underlying
+            you already hold is <strong>Covered</strong> (much lower
+            risk); without that it's <strong>Naked</strong>, and loss is
+            theoretically unlimited if the price rises far enough &mdash;
+            this simulator doesn't model margin calls or forced
+            liquidation, so a bad naked short can push your cash balance
+            negative. A short put backed by enough cash to buy the
+            underlying if assigned is <strong>Cash-secured</strong>;
+            otherwise it's also Naked, with a large (but bounded, since a
+            price can't go below $0) potential loss.
+          </p>
           <dl>
             <dt>Premium</dt>
-            <dd>What you pay to open the position. As a buyer &mdash; which
-              is all this simulator does, it doesn't simulate
-              <em>writing</em> (selling) options &mdash; the premium is
-              also your maximum possible loss, no matter how wrong the bet
-              turns out to be.</dd>
+            <dd>What you pay to open a long position, or receive to open
+              a short (written) one. As a buyer, the premium paid is also
+              your maximum possible loss, no matter how wrong the bet
+              turns out to be &mdash; as a seller/writer, it's the
+              mirror: your maximum possible <em>gain</em> is capped at
+              the premium received, but (for a naked position) your loss
+              isn't.</dd>
             <dt>In the money / out of the money</dt>
             <dd>A call is "in the money" when the underlying price is above
               the strike (and "out of the money" below it); a put is the
@@ -988,12 +1006,16 @@
         <input id="option-days-input" type="number" placeholder="Days to expiry" min="1" step="1">
         <input id="option-quantity-input" type="number" placeholder="Contracts" min="0" step="any">
         <button id="option-buy-btn">Buy</button>
+        <button id="option-sell-btn" class="sell">Sell</button>
       </div>
       <p class="hint">
         1 contract = 1 unit of the underlying here (simplified from the
         standard 100-share equivalent), to keep the numbers easy to
         follow. Crypto accepts tickers or CoinGecko ids, same as the
-        trade form above; stocks use the same Finnhub key.
+        trade form above; stocks use the same Finnhub key. "Buy" opens a
+        long position (pay the premium); "Sell" writes/opens a short
+        position (receive the premium) &mdash; see "New to options?"
+        above for what that means and the risk involved.
       </p>
       <p id="option-status" class="status"></p>
       <div class="table-wrap">
@@ -1003,7 +1025,7 @@
               <th>Contract</th>
               <th>Expires</th>
               <th class="num">Qty</th>
-              <th class="num">Premium paid</th>
+              <th class="num">Premium</th>
               <th class="num">Current value</th>
               <th class="num">P/L</th>
               <th></th>
@@ -1059,6 +1081,16 @@
         <dd>A contract giving the right, but not the obligation, to buy
           the underlying at the strike price on or before expiration.
           Buy a call when you expect the price to rise.</dd>
+        <dt>Cash-secured</dt>
+        <dd>A short put backed by enough cash to buy the underlying if
+          assigned. Lower risk than a naked short put, though still
+          bounded rather than eliminated (loss is capped at strike
+          &times; quantity minus premium received, not zero).</dd>
+        <dt>Covered</dt>
+        <dd>A short call backed by enough of the underlying already
+          held to satisfy assignment. Lower risk than a naked short call
+          &mdash; you'd hand over stock/coin you already own instead of
+          having to buy it at whatever price the market has moved to.</dd>
         <dt>Delta</dt>
         <dd>How much an option's value moves per $1 move in the
           underlying price. Labeled on the "Why did this change?"
@@ -1074,22 +1106,34 @@
         <dt>Long Call / Long Put</dt>
         <dd>The standard names for simply buying a call or buying a
           put &mdash; "long" meaning you own the right, the same sense as
-          owning a stock outright. Every position this simulator can
-          hold is one of these two, since it only buys options, never
-          writes (sells) them.</dd>
+          owning a stock outright.</dd>
+        <dt>Naked</dt>
+        <dd>A short call or put not backed by the underlying (call) or
+          enough cash (put). Higher risk than Covered/Cash-secured &mdash;
+          for a naked short call specifically, loss is theoretically
+          unlimited, and this simulator doesn't model margin calls or
+          forced liquidation to limit it.</dd>
         <dt>Payoff diagram</dt>
         <dd>A chart of profit/loss at expiration across a range of
           possible underlying prices, shown on each open option
           position. Assumes holding to expiration; closing early almost
           always plays out differently.</dd>
         <dt>Premium</dt>
-        <dd>The upfront cost of buying an option contract. As a buyer,
-          this is also your maximum possible loss, no matter how wrong
-          the bet turns out to be.</dd>
+        <dd>What you pay to buy an option (long), or receive to sell/
+          write one (short). As a buyer, the premium paid is also your
+          maximum possible loss. As a writer, it's the mirror &mdash;
+          maximum possible <em>gain</em> is capped at the premium
+          received, but loss isn't (unless the position is Covered or
+          Cash-secured).</dd>
         <dt>Put</dt>
         <dd>A contract giving the right, but not the obligation, to sell
           the underlying at the strike price on or before expiration.
           Buy a put when you expect the price to fall.</dd>
+        <dt>Short Call / Short Put</dt>
+        <dd>The standard names for selling (writing) a call or put
+          instead of buying one &mdash; you receive the premium instead
+          of paying it, and the risk profile is the mirror of the
+          matching long position. See Naked/Covered/Cash-secured.</dd>
         <dt>Strike price</dt>
         <dd>The fixed price at which an option lets you buy (call) or
           sell (put) the underlying, regardless of where it's actually
@@ -1097,7 +1141,12 @@
         <dt>Theta</dt>
         <dd>How much an option's value decays per day that passes, all
           else equal. Labeled on the "Why did this change?" breakdown for
-          each open option position.</dd>
+          each open option position. A benefit for a short position,
+          since it profits as the contract loses value.</dd>
+        <dt>Writing</dt>
+        <dd>Selling an option you didn't already own, creating a new
+          short position rather than closing an existing long one.
+          "Write a call" and "sell a call to open" mean the same thing.</dd>
       </dl>
 
       <h3 style="font-size: 0.95rem; margin: 1.25rem 0 0.75rem;">Portfolio &amp; risk</h3>
@@ -2264,6 +2313,12 @@
           const state = JSON.parse(raw);
           if (!state.options) state.options = []; // older saved state predates options
           if (typeof state.realizedPL !== 'number') state.realizedPL = 0; // predates realized P/L tracking
+          // Older saved state predates short/writing positions — every
+          // option before this was implicitly long. Note: on a short
+          // position, `premiumPaid` holds the premium *received*, not
+          // paid — kept as one field (not a second premiumReceived
+          // field) since `side` already disambiguates the direction.
+          state.options.forEach(o => { if (!o.side) o.side = 'long'; });
           return state;
         }
       } catch (e) { /* fall through to fresh state */ }
@@ -2487,19 +2542,27 @@
         return '<span class="hint">Refresh prices to see a breakdown of this position\'s value.</span>';
       }
       const S = paperLivePrices[paperPositionKey(opt.assetType, opt.symbol)];
+      const isShort = opt.side === 'short';
       const signed = n => (n >= 0 ? '+' : '') + fmtUsd(n);
-      const cls = n => (n >= 0 ? 'up' : 'down');
-      const totalPl = (b.endValue - b.startValue) * opt.quantity;
+      // The numbers describe the contract itself (side-independent), but
+      // for a short position a rising value is bad and a falling one is
+      // good — the exact opposite of a long — so the color is flipped to
+      // mean "good/bad for this position" rather than "value went up".
+      const cls = n => (isShort ? n <= 0 : n >= 0) ? 'up' : 'down';
+      const totalPl = (isShort ? -1 : 1) * (b.endValue - b.startValue) * opt.quantity;
+      const thetaSentence = isShort
+        ? '(options lose value as expiration approaches, all else equal — a benefit for a short position; traders call this sensitivity "theta")'
+        : '(options lose value as expiration approaches, all else equal &mdash; traders call this sensitivity "theta")';
       return `
         <span class="hint">Started at ${fmtUsd(b.startValue)}/contract when ${escapeHtml(opt.symbol.toUpperCase())} was ${fmtUsd(opt.underlyingPriceAtOpen)}.</span><br>
         <span class="${cls(b.timeDecay)}">Time decay: ${signed(b.timeDecay)}</span>
-        <span class="hint">(options lose value as expiration approaches, all else equal &mdash; traders call this sensitivity "theta")</span><br>
+        <span class="hint">${thetaSentence}</span><br>
         <span class="${cls(b.priceMove)}">Price move: ${signed(b.priceMove)}</span>
         <span class="hint">(${escapeHtml(opt.symbol.toUpperCase())} is now ${fmtUsd(S)} &mdash; traders call this sensitivity "delta")</span><br>
         <span class="flat">Combined effect: ${signed(b.interaction)}</span>
         <span class="hint">(these two don't add up perfectly on their own — this is the rest)</span><br>
         <span class="hint">Now worth ${fmtUsd(b.endValue)}/contract —</span>
-        <span class="${cls(totalPl)}">${signed(totalPl)} total</span>
+        <span class="${totalPl >= 0 ? 'up' : 'down'}">${signed(totalPl)} total</span>
         <span class="hint">across ${opt.quantity} contract(s).</span>
       `;
     }
@@ -2511,7 +2574,7 @@
     // options.js. Self-contained (no charting library dependency),
     // since it's a simple line rather than a real time series.
     function payoffDiagramSvg(opt) {
-      const { strike, premiumPaid: premium, quantity, optionType: kind } = opt;
+      const { strike, premiumPaid: premium, quantity, optionType: kind, side } = opt;
       const currentPrice = paperLivePrices[paperPositionKey(opt.assetType, opt.symbol)];
       const center = currentPrice != null ? currentPrice : strike;
       if (!(center > 0)) return '<p class="hint">Not enough price data yet for a payoff diagram.</p>';
@@ -2522,7 +2585,7 @@
       const points = [];
       for (let i = 0; i <= steps; i++) {
         const price = rangeLow + (rangeHigh - rangeLow) * (i / steps);
-        points.push({ price, pl: optionPayoffAtExpiration(kind, strike, premium, quantity, price) });
+        points.push({ price, pl: optionPayoffAtExpiration(kind, strike, premium, quantity, price, side) });
       }
       const plValues = points.map(p => p.pl);
       const plMin = Math.min(...plValues, 0);
@@ -2555,20 +2618,47 @@
         </svg>`;
 
       const breakeven = optionBreakeven(kind, strike, premium);
-      const maxLoss = premium * quantity;
-      const maxGainText = kind === 'call'
-        ? 'gain is theoretically unlimited the higher the price goes'
-        : `max gain is ${fmtUsd((strike * quantity) - maxLoss)} if the price falls to zero`;
+      const risk = optionRiskProfile(kind, side, strike, premium, quantity);
+      const maxLossText = risk.maxLossBounded
+        ? fmtUsd(risk.maxLoss)
+        : 'theoretically unlimited (the higher the price goes)';
+      const maxGainText = risk.maxGainBounded
+        ? fmtUsd(risk.maxGain)
+        : 'theoretically unlimited (the higher the price goes)';
 
       return `
         ${svg}
         <p class="hint" style="margin: 0.4rem 0 0;">
-          Breakeven at expiration: <strong>${fmtUsd(breakeven)}</strong>. Max loss:
-          <strong>${fmtUsd(maxLoss)}</strong> (the premium paid, if this expires worthless) &mdash;
-          ${maxGainText}. This assumes holding to expiration; closing early
-          almost always plays out differently since time value hasn't
-          fully decayed yet.
+          Breakeven at expiration: <strong>${fmtUsd(breakeven)}</strong>.
+          Max loss: <strong>${maxLossText}</strong>. Max gain:
+          <strong>${maxGainText}</strong>. This assumes holding to
+          expiration; closing early almost always plays out differently
+          since time value hasn't fully decayed yet.
         </p>`;
+    }
+
+    // Informational only (never blocks a trade, same spirit as
+    // concentrationNote): a short call backed by enough of the
+    // underlying is "Covered" instead of "Naked" (much lower risk — the
+    // stock/coin you already hold satisfies assignment instead of
+    // needing to be bought at whatever price the market has moved to).
+    // A short put backed by enough cash to buy the underlying if
+    // assigned is "Cash-secured" instead of "Naked". Long positions and
+    // covered calls with the paired stock trade share no such concept.
+    function optionCoverageBadge(opt) {
+      if (opt.side !== 'short') return '';
+      if (opt.optionType === 'call') {
+        const held = paperState.positions[paperPositionKey(opt.assetType, opt.symbol)];
+        const covered = held && held.quantity >= opt.quantity;
+        return covered
+          ? '<span class="held-badge" title="You hold enough of the underlying to cover this if assigned.">COVERED</span>'
+          : '<span class="mover-badge" title="No underlying held to cover this — loss is theoretically unlimited if the price rises, and this simulator does not model margin calls.">NAKED</span>';
+      }
+      const securedCash = opt.strike * opt.quantity;
+      const secured = paperState.cash >= securedCash;
+      return secured
+        ? '<span class="held-badge" title="You hold enough cash to buy the underlying if assigned.">CASH-SECURED</span>'
+        : '<span class="mover-badge" title="Not enough cash set aside to buy the underlying if assigned — this simulator does not model margin calls.">NAKED</span>';
     }
 
     function renderOptions() {
@@ -2578,17 +2668,22 @@
         return;
       }
       tbody.innerHTML = paperState.options.map(opt => {
+        const isShort = opt.side === 'short';
         const value = optionCurrentValue(opt);
-        const totalPl = value != null ? (value - opt.premiumPaid) * opt.quantity : null;
+        const totalPl = value != null
+          ? (isShort ? (opt.premiumPaid - value) : (value - opt.premiumPaid)) * opt.quantity
+          : null;
         const plClass = totalPl == null ? 'flat' : totalPl >= 0 ? 'up' : 'down';
         const daysLeft = Math.max(Math.ceil((opt.expiresAt - Date.now()) / (24 * 60 * 60 * 1000)), 0);
-        const contractLabel = `${opt.symbol.toUpperCase()} $${opt.strike} ${opt.optionType === 'call' ? 'Long Call' : 'Long Put'}`;
+        const sideLabel = isShort ? 'Short' : 'Long';
+        const contractLabel = `${opt.symbol.toUpperCase()} $${opt.strike} ${sideLabel} ${opt.optionType === 'call' ? 'Call' : 'Put'}`;
+        const premiumCell = `${fmtUsd(opt.premiumPaid)} <span class="hint">${isShort ? 'received' : 'paid'}</span>`;
         return `
           <tr>
-            <td>${contractLabel}</td>
+            <td>${optionCoverageBadge(opt)}${contractLabel}</td>
             <td>${daysLeft > 0 ? daysLeft + 'd' : 'Expired'}</td>
             <td class="num">${opt.quantity}</td>
-            <td class="num">${fmtUsd(opt.premiumPaid)}</td>
+            <td class="num">${premiumCell}</td>
             <td class="num">${value != null ? fmtUsd(value) : 'n/a'}</td>
             <td class="num ${plClass}">${totalPl != null ? fmtUsd(totalPl) : 'n/a'}</td>
             <td class="num"><button class="ghost" data-close-option="${opt.id}">Close</button></td>
@@ -2825,6 +2920,7 @@
         }
         if (!state.options) state.options = [];
         if (typeof state.realizedPL !== 'number') state.realizedPL = 0;
+        state.options.forEach(o => { if (!o.side) o.side = 'long'; });
         paperState = state;
         paperLivePrices = {};
         savePaperState();
@@ -2841,7 +2937,14 @@
       return 'opt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
     }
 
-    async function placeOptionTrade() {
+    // side: 'long' (Buy — pay the premium) or 'short' (Sell/write —
+    // receive the premium). Mirrors placePaperTrade's buy/sell split
+    // for spot trades. Opening a short has nothing to block on cash —
+    // it *adds* cash — so unlike buying, there's no collateral check
+    // here; risk is disclosed (see the Naked/Covered badge and payoff
+    // diagram in renderOptions/payoffDiagramSvg), not prevented, same
+    // philosophy as concentrationNote elsewhere on this page.
+    async function placeOptionTrade(side) {
       const statusEl = document.getElementById('option-status');
       const assetType = document.getElementById('option-asset-type').value;
       const symbolInput = document.getElementById('option-symbol-input').value.trim();
@@ -2865,10 +2968,10 @@
         const S = await fetchPaperPrice(assetType, normSymbol, key);
         const T = days / 365;
         const premium = blackScholesPrice(optionType, S, strike, T, RISK_FREE_RATE, OPTION_VOLATILITY[assetType]);
-        const totalCost = premium * quantity;
+        const totalPremium = premium * quantity;
 
-        if (totalCost > paperState.cash) {
-          statusEl.textContent = `Not enough cash: need ${fmtUsd(totalCost)}, have ${fmtUsd(paperState.cash)}.`;
+        if (side === 'long' && totalPremium > paperState.cash) {
+          statusEl.textContent = `Not enough cash: need ${fmtUsd(totalPremium)}, have ${fmtUsd(paperState.cash)}.`;
           statusEl.className = 'status error';
           return;
         }
@@ -2878,23 +2981,31 @@
           assetType,
           symbol: normSymbol,
           optionType,
+          side,
           strike,
           quantity,
-          premiumPaid: premium,
+          premiumPaid: premium, // premium *received* when side === 'short' — see field note in loadPaperState()
           underlyingPriceAtOpen: S,
           openedAt: Date.now(),
           expiresAt: Date.now() + days * 24 * 60 * 60 * 1000
         });
-        paperState.cash -= totalCost;
+
+        if (side === 'short') {
+          paperState.cash += totalPremium;
+        } else {
+          paperState.cash -= totalPremium;
+        }
         paperState.history.push({
-          time: Date.now(), action: 'buy-option', type: assetType, symbol: normSymbol,
+          time: Date.now(), action: side === 'short' ? 'write-option' : 'buy-option', type: assetType, symbol: normSymbol,
           quantity, price: premium
         });
 
         savePaperState();
         renderPaperAll();
-        const sizing = concentrationNote(totalCost, currentPortfolioValue());
-        statusEl.textContent = `Bought ${quantity} ${normSymbol} $${strike} ${optionType} at ${fmtUsd(premium)} each.${sizing.text}`;
+        const sizing = concentrationNote(totalPremium, currentPortfolioValue());
+        const verb = side === 'short' ? 'Sold (wrote)' : 'Bought';
+        const premiumWord = side === 'short' ? 'received' : 'paid';
+        statusEl.textContent = `${verb} ${quantity} ${normSymbol} $${strike} ${optionType}, ${fmtUsd(premium)} each ${premiumWord}.${sizing.text}`;
         statusEl.className = sizing.warn ? 'status warn' : 'status';
       } catch (err) {
         statusEl.textContent = "Couldn't place trade: " + err.message;
@@ -2902,6 +3013,13 @@
       }
     }
 
+    // Closing a long sells it back (credits cash, same as before). Closing
+    // a short buys it back (debits cash) — if the position lost enough
+    // that the buyback costs more than the available cash, cash simply
+    // goes negative rather than blocking the close: this simulator
+    // doesn't model margin calls or forced liquidation, and refusing to
+    // let someone exit a losing position would be worse than an honest
+    // negative balance.
     async function closeOptionPosition(id) {
       const opt = paperState.options.find(o => o.id === id);
       if (!opt) return;
@@ -2915,27 +3033,33 @@
         const T = timeRemainingYears(opt.expiresAt);
         const value = blackScholesPrice(opt.optionType, S, opt.strike, T, RISK_FREE_RATE, OPTION_VOLATILITY[opt.assetType]);
         const proceeds = value * opt.quantity;
-        const realizedPL = realizedGain(opt.premiumPaid, value, opt.quantity);
+        const isShort = opt.side === 'short';
+        const realizedPL = isShort
+          ? realizedGain(value, opt.premiumPaid, opt.quantity)
+          : realizedGain(opt.premiumPaid, value, opt.quantity);
 
         paperState.options = paperState.options.filter(o => o.id !== id);
-        paperState.cash += proceeds;
+        paperState.cash += isShort ? -proceeds : proceeds;
         paperState.realizedPL += realizedPL;
         paperState.history.push({
-          time: Date.now(), action: 'sell-option', type: opt.assetType, symbol: opt.symbol,
+          time: Date.now(), action: isShort ? 'buy-to-close-option' : 'sell-option', type: opt.assetType, symbol: opt.symbol,
           quantity: opt.quantity, price: value, realizedPL, heldMs: Date.now() - opt.openedAt
         });
 
         savePaperState();
         renderPaperAll();
-        statusEl.textContent = `Closed ${opt.quantity} ${opt.symbol} $${opt.strike} ${opt.optionType} at ${fmtUsd(value)} each (${realizedPL >= 0 ? '+' : ''}${fmtUsd(realizedPL)} realized).`;
-        statusEl.className = 'status';
+        const verb = isShort ? 'Bought back (closed)' : 'Closed';
+        const negativeCashNote = paperState.cash < 0 ? ' Cash is now negative — this simulator doesn\'t model margin calls, so a losing short just goes into debt rather than being force-closed early.' : '';
+        statusEl.textContent = `${verb} ${opt.quantity} ${opt.symbol} $${opt.strike} ${opt.optionType} at ${fmtUsd(value)} each (${realizedPL >= 0 ? '+' : ''}${fmtUsd(realizedPL)} realized).${negativeCashNote}`;
+        statusEl.className = negativeCashNote ? 'status warn' : 'status';
       } catch (err) {
         statusEl.textContent = "Couldn't close position: " + err.message;
         statusEl.className = 'status error';
       }
     }
 
-    document.getElementById('option-buy-btn').addEventListener('click', placeOptionTrade);
+    document.getElementById('option-buy-btn').addEventListener('click', () => placeOptionTrade('long'));
+    document.getElementById('option-sell-btn').addEventListener('click', () => placeOptionTrade('short'));
     document.getElementById('options-rows').addEventListener('click', e => {
       const btn = e.target.closest('[data-close-option]');
       if (!btn) return;
