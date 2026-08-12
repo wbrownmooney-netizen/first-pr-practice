@@ -698,7 +698,9 @@
         next; unlike the Strategy comparison above, there's no backtested
         accuracy attached to these. Green markers below a candle are
         bullish shapes, red markers above are bearish, gray circles are
-        dojis. Hover a marker for its name. With this checked and live
+        dojis &mdash; <strong>tap (or click) a marker's candle</strong>
+        to see its name below the chart, instead of a permanent label on
+        every candle crowding the view. With this checked and live
         alerts enabled (Alerts section above), you'll also get a
         notification whenever a new pattern forms on this chart while
         the tab stays open. "Period high/low" draws two dashed reference
@@ -707,7 +709,8 @@
         the highest/lowest point in this chart's own data.
       </p>
       <p id="chart-status" class="status"></p>
-      <div id="chart-container" style="height: 400px; margin-top: 0.75rem;"></div>
+      <div id="chart-container" style="height: 440px; margin-top: 0.75rem;"></div>
+      <p id="chart-pattern-detail" class="status" style="min-height: 1.2em;"></p>
 
       <details class="edu-block" style="margin-top: 1rem;">
         <summary>What do these pattern names mean?</summary>
@@ -1878,7 +1881,36 @@
       // belonged to the series just removed above.
       highPriceLine = null;
       lowPriceLine = null;
+      // Pattern markers carry no permanent text label (see
+      // renderPatternMarkers) specifically to avoid crowding the chart
+      // with dozens of overlapping labels — clicking a candle instead
+      // looks it up on demand. Each fresh chart needs its own
+      // subscription since the whole chart object is recreated above.
+      priceChart.subscribeClick(handleChartClick);
       return candleSeries;
+    }
+
+    // Unix seconds (crypto candles) or a 'YYYY-MM-DD' string (stock
+    // candles, from Twelve Data) — fetchCryptoOhlc/fetchStockOhlc use
+    // different time representations, so this accepts either.
+    function formatChartTime(t) {
+      const date = typeof t === 'number' ? new Date(t * 1000) : new Date(t);
+      return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    }
+
+    function handleChartClick(param) {
+      const detailEl = document.getElementById('chart-pattern-detail');
+      if (!detailEl || !param.time || lastLoadedCandles.length === 0) return;
+      const index = lastLoadedCandles.findIndex(c => c.time === param.time);
+      if (index === -1) return;
+      const candle = lastLoadedCandles[index];
+      const dateText = formatChartTime(candle.time);
+      const ohlcText = `O ${fmtUsd(candle.open)} H ${fmtUsd(candle.high)} L ${fmtUsd(candle.low)} C ${fmtUsd(candle.close)}`;
+      const match = detectPatterns(lastLoadedCandles).find(m => m.index === index);
+      detailEl.textContent = match
+        ? `${dateText}: ${match.pattern} — ${ohlcText}`
+        : `${dateText}: no pattern on this candle — ${ohlcText}`;
+      detailEl.className = 'status';
     }
 
     async function loadChart() {
@@ -2018,12 +2050,15 @@
         return;
       }
       const matches = detectPatterns(lastLoadedCandles);
-      const markers = matches.map(({ index, pattern, direction }) => ({
+      // No `text` label — with dozens of matches possible on one chart,
+      // permanent per-marker text overlapped and crowded the view. The
+      // shape/color alone says "up/down/neutral pattern here"; the name
+      // shows on demand when that candle is clicked (handleChartClick).
+      const markers = matches.map(({ index, direction }) => ({
         time: lastLoadedCandles[index].time,
         position: direction === 'bearish' ? 'aboveBar' : direction === 'bullish' ? 'belowBar' : 'inBar',
         color: direction === 'bearish' ? '#f87171' : direction === 'bullish' ? '#4ade80' : '#9ca3af',
-        shape: direction === 'bearish' ? 'arrowDown' : direction === 'bullish' ? 'arrowUp' : 'circle',
-        text: pattern
+        shape: direction === 'bearish' ? 'arrowDown' : direction === 'bullish' ? 'arrowUp' : 'circle'
       }));
       candleSeries.setMarkers(markers);
     }
