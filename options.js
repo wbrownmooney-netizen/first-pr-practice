@@ -1,8 +1,11 @@
 // Black-Scholes option pricing — pure math, no DOM or network access, so
 // it can be unit tested directly. This is a simplified educational model:
-// it assumes a fixed volatility and a 0% risk-free rate rather than using
-// real market-implied volatility, so prices here will not match what a
-// real options exchange would quote for the same contract.
+// volatility is estimated from recent price history (see
+// historicalVolatility below) rather than pulled from real market-quoted
+// implied volatility, so prices here will not match what a real options
+// exchange would quote for the same contract. The risk-free rate is the
+// one input that IS real market data — trading.html fetches the current
+// 3-month Treasury yield and passes it in as `r`.
 
 // Standard normal cumulative distribution function (Abramowitz & Stegun
 // approximation — accurate to about 7 decimal places).
@@ -12,6 +15,32 @@ function normCdf(x) {
   let prob = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
   if (x > 0) prob = 1 - prob;
   return prob;
+}
+
+// Annualized volatility estimated from a series of closing prices — the
+// standard deviation of consecutive log returns, scaled up to a yearly
+// figure by the number of such periods in a year (2190 for this app's
+// 4-hourly crypto candles, 252 for daily stock candles — trading.html
+// picks the right one to pass in). This is *historical* volatility
+// (what the price actually did), not *implied* volatility (what the
+// options market is currently pricing in) — those two commonly differ,
+// sometimes a lot, but historical is the one a client-side app can
+// compute for free from data it already has, unlike implied volatility
+// which requires live options-chain data most free market-data APIs
+// don't provide. Needs at least 2 closes to form a single return;
+// returns null otherwise rather than a misleading 0.
+function historicalVolatility(closes, periodsPerYear) {
+  if (!closes || closes.length < 2) return null;
+  const logReturns = [];
+  for (let i = 1; i < closes.length; i++) {
+    if (closes[i - 1] > 0 && closes[i] > 0) {
+      logReturns.push(Math.log(closes[i] / closes[i - 1]));
+    }
+  }
+  if (logReturns.length < 2) return null;
+  const mean = logReturns.reduce((sum, r) => sum + r, 0) / logReturns.length;
+  const variance = logReturns.reduce((sum, r) => sum + (r - mean) * (r - mean), 0) / (logReturns.length - 1);
+  return Math.sqrt(variance) * Math.sqrt(periodsPerYear);
 }
 
 // kind: 'call' or 'put'. S = current underlying price, K = strike,

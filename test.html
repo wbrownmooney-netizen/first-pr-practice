@@ -66,11 +66,13 @@
       <code>optionBreakeven</code>/<code>optionRiskProfile</code>/
       <code>combinedPayoffAtExpiration</code>/<code>bullCallSpreadRiskProfile</code>/
       <code>bearPutSpreadRiskProfile</code>/<code>longStraddleRiskProfile</code>/
-      <code>coveredCallRiskProfile</code>/<code>protectivePutRiskProfile</code> from
+      <code>coveredCallRiskProfile</code>/<code>protectivePutRiskProfile</code>/
+      <code>historicalVolatility</code> from
       <code>options.js</code>, and
       <code>isDoji</code>/<code>isHammer</code>/<code>isShootingStar</code>/
       <code>isBullishEngulfing</code>/<code>isBearishEngulfing</code>/
-      <code>isMorningStar</code>/<code>isEveningStar</code>/<code>detectPatterns</code>
+      <code>isMorningStar</code>/<code>isEveningStar</code>/<code>detectPatterns</code>/
+      <code>backtestPatternAccuracy</code>
       from <code>patterns.js</code>,
       against known inputs and outputs.</p>
     <p id="summary"></p>
@@ -517,6 +519,68 @@
       const legs = [{ optionType: 'call', strike: 110, premiumPaid: 4, quantity: 1, side: 'short' }];
       const spotLeg = { avgCost: 100, quantity: 1 };
       assertEqual(combinedPayoffAtExpiration(legs, 200, spotLeg), 14, 'combined covered call deep ITM');
+    });
+
+    test('historicalVolatility: constant prices -> zero volatility', () => {
+      assertEqual(historicalVolatility([100, 100, 100, 100], 252), 0, 'flat series');
+    });
+
+    test('historicalVolatility: fewer than 2 closes -> null', () => {
+      assertEqual(historicalVolatility([100], 252), null, 'one close');
+    });
+
+    test('historicalVolatility: null input -> null', () => {
+      assertEqual(historicalVolatility(null, 252), null, 'null closes');
+    });
+
+    test('historicalVolatility: exactly 2 closes (only 1 return) -> null', () => {
+      assertEqual(historicalVolatility([100, 105], 252), null, 'needs at least 2 returns');
+    });
+
+    test('historicalVolatility: known oscillating series, daily annualization', () => {
+      assertApprox(historicalVolatility([100, 105, 100, 105], 252), 0.894338, 0.000005, 'oscillating daily');
+    });
+
+    test('historicalVolatility: same returns annualized differently scale by sqrt(periods ratio)', () => {
+      const daily = historicalVolatility([100, 105, 100, 105], 252);
+      const fourHourly = historicalVolatility([100, 105, 100, 105], 2190);
+      assertApprox(fourHourly / daily, Math.sqrt(2190 / 252), 0.0001, 'annualization scaling');
+    });
+
+    // Hammer at index 2 followed by an up move 2 candles later (a
+    // correct call), and another hammer at index 6 followed by a down
+    // move (an incorrect call) — hand-verified against
+    // backtestPatternAccuracy's own logic before being hardcoded here.
+    const patternBacktestCandles = [
+      { open: 100, high: 101, low: 99, close: 100 },
+      { open: 100, high: 101, low: 99, close: 100 },
+      { open: 100, high: 101.5, low: 95, close: 101 },
+      { open: 101, high: 103, low: 100, close: 102 },
+      { open: 102, high: 106, low: 101, close: 105 },
+      { open: 105, high: 106, low: 104, close: 105 },
+      { open: 105, high: 106.5, low: 99, close: 106 },
+      { open: 106, high: 107, low: 103, close: 104 },
+      { open: 104, high: 105, low: 100, close: 101 }
+    ];
+
+    test('backtestPatternAccuracy: one correct call and one incorrect -> 50%', () => {
+      assertEqual(
+        backtestPatternAccuracy(patternBacktestCandles, 'Hammer', 2),
+        { accuracy: 0.5, trials: 2 },
+        'hammer backtest'
+      );
+    });
+
+    test('backtestPatternAccuracy: pattern never occurs -> null', () => {
+      assertEqual(backtestPatternAccuracy(patternBacktestCandles, 'Morning Star', 2), null, 'no occurrences');
+    });
+
+    test('backtestPatternAccuracy: Doji has no directional bias -> always null', () => {
+      assertEqual(backtestPatternAccuracy(patternBacktestCandles, 'Doji', 2), null, 'doji not directional');
+    });
+
+    test('backtestPatternAccuracy: lookahead runs past available data -> null', () => {
+      assertEqual(backtestPatternAccuracy(patternBacktestCandles, 'Hammer', 100), null, 'nothing scorable');
     });
 
     test('isDoji: tiny body relative to range -> true', () => {

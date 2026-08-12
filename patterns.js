@@ -1,9 +1,11 @@
 // Naive candlestick pattern detection over OHLC candles ({open, high,
 // low, close}). These are textbook shape definitions, not a trading
 // signal — they describe what a candle (or short run of candles) looks
-// like, not what happens next. No backtested accuracy is attached here,
-// unlike the trend/MA/RSI signals in signals.js; treat these as
-// descriptive labels, not predictions.
+// like, not what happens next. backtestPatternAccuracy (below) measures
+// how often each shape's conventional direction actually panned out,
+// same spirit as the trend/MA/RSI backtests in signals.js — worth
+// checking before treating any of these as more than a descriptive
+// label.
 
 function candleStats(c) {
   const body = Math.abs(c.close - c.open);
@@ -118,4 +120,30 @@ function detectPatterns(candles) {
     }
   }
   return results;
+}
+
+// Measures how often a given pattern type was historically followed by
+// a move matching its conventional direction, `lookahead` candles later
+// — same backtesting approach as backtestSignal in signals.js (walk
+// history, compare a prediction against what actually happened),
+// applied to candlestick shapes instead of the trend signal. A pattern
+// occurrence within `lookahead` candles of the end of the series can't
+// be scored yet (no "after" to check) and is excluded rather than
+// guessed at. Doji has no directional bias (`direction: 'neutral'`) so
+// there's nothing to test — always returns null for it. Returns null
+// (not 0 trials) when nothing was scorable, same convention as
+// backtestSignal, so callers can render "not enough data" consistently.
+function backtestPatternAccuracy(candles, patternName, lookahead) {
+  const matches = detectPatterns(candles).filter(m => m.pattern === patternName && m.direction !== 'neutral');
+  if (matches.length === 0) return null;
+  let correct = 0, trials = 0;
+  for (const m of matches) {
+    const exitIndex = m.index + lookahead;
+    if (exitIndex >= candles.length) continue;
+    trials++;
+    const movedUp = candles[exitIndex].close > candles[m.index].close;
+    const matched = m.direction === 'bullish' ? movedUp : !movedUp;
+    if (matched) correct++;
+  }
+  return trials > 0 ? { accuracy: correct / trials, trials } : null;
 }
