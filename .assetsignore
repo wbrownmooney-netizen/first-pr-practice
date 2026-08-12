@@ -1,0 +1,18 @@
+# Excludes non-website files from the Cloudflare Worker static-assets
+# deploy. Without this, the build log showed .git internals, node_modules,
+# and the Android/Node tooling getting uploaded and served alongside the
+# actual site — wasteful and sloppy, though not a real security issue
+# since this repo is already public.
+.git
+.gitignore
+node_modules
+android
+www
+scripts
+resources
+package.json
+package-lock.json
+capacitor.config.json
+store-listing.md
+LICENSE
+README.md
