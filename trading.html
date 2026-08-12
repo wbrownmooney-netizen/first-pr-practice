@@ -686,6 +686,7 @@
           <option value="stock">Stock</option>
         </select>
         <input id="chart-symbol-input" type="text" placeholder="e.g. bitcoin, or AAPL" autocomplete="off">
+        <select id="chart-interval" title="Time range and candle size"></select>
         <button id="chart-load-btn">Load chart</button>
       </div>
       <label class="row-inline" style="gap:0.4rem; cursor:pointer;">
@@ -1900,9 +1901,16 @@
     // Twelve Data's time_series endpoint, same one already used for
     // stock trend/accuracy, just reading the full OHLC fields instead
     // of only the close.
-    async function fetchCryptoOhlc(input) {
+    // `days` controls both how far back CoinGecko's OHLC endpoint looks
+    // and the candle granularity it auto-selects — the endpoint doesn't
+    // take granularity directly. Verified against the live API: 1-2
+    // days -> 30-minute candles, 3-30 days -> 4-hourly, 31-365 days ->
+    // 4-daily. Defaults to 30 (unchanged from before this was
+    // configurable) so every other caller (Strategy comparison,
+    // volatility caching) keeps working exactly as it did.
+    async function fetchCryptoOhlc(input, days = 30) {
       const tryFetch = id => fetchWithNetworkRetry(
-        `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(id)}/ohlc?vs_currency=usd&days=30`
+        `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(id)}/ohlc?vs_currency=usd&days=${days}`
       );
       let res = await tryFetch(input);
       if (!res.ok) {
@@ -1912,31 +1920,43 @@
         if (!res.ok) throw new Error('CoinGecko OHLC request failed: ' + res.status);
       }
       const rows = await res.json();
-      // CoinGecko's 30-day OHLC granularity is 4-hourly, not daily, so
-      // multiple candles can share the same calendar day — a plain
-      // 'YYYY-MM-DD' time value would collapse those into duplicate,
-      // non-ascending timestamps, which the chart library requires to
-      // be strictly increasing. A Unix timestamp (seconds) keeps every
-      // candle distinct regardless of granularity.
+      // CoinGecko's OHLC granularity is finer than daily for anything
+      // under 31 days, so multiple candles can share the same calendar
+      // day — a plain 'YYYY-MM-DD' time value would collapse those into
+      // duplicate, non-ascending timestamps, which the chart library
+      // requires to be strictly increasing. A Unix timestamp (seconds)
+      // keeps every candle distinct regardless of granularity.
       return rows.map(([ts, open, high, low, close]) => ({
         time: Math.floor(ts / 1000),
         open, high, low, close
       }));
     }
 
-    async function fetchStockOhlc(symbol, twelveDataKey) {
+    // `interval`/`outputsize` default to this app's original fixed
+    // values (daily candles, ~3 months) so every other caller keeps
+    // working exactly as it did before this was configurable.
+    async function fetchStockOhlc(symbol, twelveDataKey, interval = '1day', outputsize = 90) {
       if (!twelveDataKey) throw new Error('Add a Twelve Data key in the Stocks section above');
       const res = await fetchWithNetworkRetry(
-        `https://api.twelvedata.com/time_series?symbol=${symbol}&interval=1day&outputsize=90&apikey=${twelveDataKey}`
+        `https://api.twelvedata.com/time_series?symbol=${symbol}&interval=${interval}&outputsize=${outputsize}&apikey=${twelveDataKey}`
       );
       if (!res.ok) throw new Error('Twelve Data request failed: ' + res.status);
       const data = await res.json();
       if (data.status === 'error' || !Array.isArray(data.values)) {
         throw new Error(data.message || `No data for symbol "${symbol}"`);
       }
+      // Daily/weekly/monthly bars come back as a plain 'YYYY-MM-DD' date
+      // string, which the chart library accepts directly as a
+      // business-day value. Intraday bars come back as a full
+      // "YYYY-MM-DD HH:MM:SS" datetime instead, which needs converting
+      // to a Unix timestamp — the library's business-day format has no
+      // time-of-day component, so feeding it one of these strings
+      // directly would misrender (or collapse same-day bars together,
+      // same issue fetchCryptoOhlc's comment above describes).
+      const isIntraday = !['1day', '1week', '1month'].includes(interval);
       // Twelve Data returns newest-first; the chart wants chronological order.
       return data.values.slice().reverse().map(v => ({
-        time: v.datetime,
+        time: isIntraday ? Math.floor(new Date(v.datetime).getTime() / 1000) : v.datetime,
         open: parseFloat(v.open), high: parseFloat(v.high), low: parseFloat(v.low), close: parseFloat(v.close)
       }));
     }
@@ -2402,6 +2422,54 @@
       }
     }
 
+    // Time range + candle size, per asset type. CoinGecko's OHLC endpoint
+    // only takes a lookback window (`days`) — it auto-selects candle
+    // granularity from that (verified against the live API: 1-2 days ->
+    // 30-min candles, 3-30 days -> 4-hourly, 31-365 days -> 4-daily), so
+    // there's no independent "candle size" to pick for crypto the way
+    // Twelve Data's `interval` param provides for stocks. The first
+    // entry in each list is the default — matches this app's original
+    // fixed behavior (30 days for crypto, 90 daily bars for stocks)
+    // exactly, so loading a chart for the first time looks the same as
+    // it always did.
+    const CHART_INTERVALS = {
+      crypto: [
+        { label: '1 Month', days: 30 },
+        { label: '1 Day', days: 1 },
+        { label: '1 Week', days: 7 },
+        { label: '3 Months', days: 90 },
+        { label: '6 Months', days: 180 },
+        { label: '1 Year', days: 365 }
+      ],
+      stock: [
+        { label: '3 Months', interval: '1day', outputsize: 90 },
+        { label: '5 Days', interval: '30min', outputsize: 65 },
+        { label: '1 Month', interval: '1day', outputsize: 22 },
+        { label: '1 Year', interval: '1day', outputsize: 252 },
+        { label: '5 Years', interval: '1week', outputsize: 260 }
+      ]
+    };
+
+    // Rebuilds the interval dropdown for whichever asset type is
+    // currently selected — crypto and stock have entirely different
+    // option sets (see CHART_INTERVALS above), so this runs on asset
+    // type change as well as on page load.
+    function populateChartIntervalOptions() {
+      const assetType = document.getElementById('chart-asset-type').value;
+      const select = document.getElementById('chart-interval');
+      select.innerHTML = CHART_INTERVALS[assetType]
+        .map(o => `<option value="${escapeHtml(o.label)}">${escapeHtml(o.label)}</option>`)
+        .join('');
+    }
+    document.getElementById('chart-asset-type').addEventListener('change', populateChartIntervalOptions);
+    populateChartIntervalOptions();
+
+    function selectedChartInterval() {
+      const assetType = document.getElementById('chart-asset-type').value;
+      const label = document.getElementById('chart-interval').value;
+      return CHART_INTERVALS[assetType].find(o => o.label === label) || CHART_INTERVALS[assetType][0];
+    }
+
     async function loadChart() {
       const statusEl = document.getElementById('chart-status');
       if (typeof LightweightCharts === 'undefined') {
@@ -2413,6 +2481,7 @@
       const assetType = document.getElementById('chart-asset-type').value;
       const symbolInput = document.getElementById('chart-symbol-input').value.trim();
       const twelveDataKey = document.getElementById('twelvedata-key').value.trim();
+      const interval = selectedChartInterval();
 
       if (!symbolInput) {
         statusEl.textContent = 'Enter a symbol.';
@@ -2426,8 +2495,8 @@
       try {
         const normSymbol = assetType === 'stock' ? symbolInput.toUpperCase() : symbolInput.toLowerCase();
         const candles = assetType === 'crypto'
-          ? await fetchCryptoOhlc(normSymbol)
-          : await fetchStockOhlc(normSymbol, twelveDataKey);
+          ? await fetchCryptoOhlc(normSymbol, interval.days)
+          : await fetchStockOhlc(normSymbol, twelveDataKey, interval.interval, interval.outputsize);
 
         if (candles.length === 0) {
           statusEl.textContent = 'No candle data available for that symbol.';
@@ -2460,6 +2529,7 @@
         // doesn't immediately re-fire against a freshly-fetched series.
         lastChartType = assetType;
         lastChartSymbol = normSymbol;
+        lastChartInterval = interval;
         lastAlertedPatternCandleTime = candles[candles.length - 1].time;
         renderChartAlertLines();
         renderPatternAccuracyTable();
@@ -2483,6 +2553,7 @@
     // than every 60s poll while it's still the latest one.
     let lastChartType = null;
     let lastChartSymbol = null;
+    let lastChartInterval = null;
     let lastAlertedPatternCandleTime = null;
 
     // Re-fetches the currently loaded chart's candles, updates the
@@ -2492,12 +2563,12 @@
     // does nothing if no chart is loaded; best-effort on fetch failure
     // so one bad refresh doesn't interrupt the rest of the alert poll.
     async function refreshChartForAlerts() {
-      if (!lastChartType || !lastChartSymbol || !candleSeries) return;
+      if (!lastChartType || !lastChartSymbol || !lastChartInterval || !candleSeries) return;
       try {
         const twelveDataKey = document.getElementById('twelvedata-key').value.trim();
         const candles = lastChartType === 'crypto'
-          ? await fetchCryptoOhlc(lastChartSymbol)
-          : await fetchStockOhlc(lastChartSymbol, twelveDataKey);
+          ? await fetchCryptoOhlc(lastChartSymbol, lastChartInterval.days)
+          : await fetchStockOhlc(lastChartSymbol, twelveDataKey, lastChartInterval.interval, lastChartInterval.outputsize);
         if (candles.length === 0) return;
 
         candleSeries.setData(candles);
