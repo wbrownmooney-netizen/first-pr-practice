@@ -321,6 +321,16 @@ meant to build the habit of noticing concentration risk before it's a
 problem, since nothing in a paper simulator naturally teaches that the
 way a real, painful loss would.
 
+Next to Realized P/L sits a **Total P/L (all-time)** figure, combining
+that realized number with the unrealized P/L on everything you
+currently hold — open positions and options — computed via a small
+`totalUnrealizedPL()` helper (the same cost-basis/live-price math the
+Holdings and Options tables already use, just summed once). Unlike
+Realized P/L, this one moves with live prices: it only counts a
+position's unrealized side once a live price has actually been fetched
+for it, so a symbol you just bought (before the next price refresh)
+contributes zero rather than a misleading number.
+
 A **Trading patterns** panel below the trade history mines your own
 closed trades for a well-documented behavioral-finance tendency: the
 **disposition effect**, the instinct to sell winners quickly but hold
