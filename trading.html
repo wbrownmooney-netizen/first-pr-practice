@@ -427,7 +427,11 @@
         alerts above &mdash; you'll get a notification the moment a coin
         or watchlist stock crosses it, in either direction, the next
         time this page polls while live alerts are enabled. Each alert
-        fires once, then removes itself.
+        fires once, then removes itself. You can also add these directly
+        from a spot on the Chart below by clicking it. The optional
+        date/time just quietly removes the alert if it hasn't fired by
+        then &mdash; it can't trigger a notification while this tab is
+        closed, there's no server behind this page.
       </p>
       <div class="row-inline">
         <select id="price-alert-type">
@@ -436,6 +440,7 @@
         </select>
         <input id="price-alert-symbol" type="text" placeholder="e.g. bitcoin, or AAPL" autocomplete="off">
         <input id="price-alert-target" type="number" placeholder="Target price ($)" min="0" step="any">
+        <input id="price-alert-deadline" type="datetime-local" title="Optional: stop watching by this date/time">
         <button id="add-price-alert-btn">Add alert</button>
       </div>
       <p id="price-alert-status" class="status"></p>
@@ -709,9 +714,32 @@
         currently loaded &mdash; not a 52-week or all-time high, just
         the highest/lowest point in this chart's own data.
       </p>
+      <p class="hint">
+        <strong>Click anywhere on the chart</strong> to set a price alert
+        right at that level — a popup lets you confirm the price (and
+        optionally attach a date/time it should stop watching by) before
+        adding it to the Price target alerts list above, with a dashed
+        line drawn on the chart so you can see it at a glance.
+      </p>
       <p id="chart-status" class="status"></p>
-      <div id="chart-container" style="height: 440px; margin-top: 0.75rem;"></div>
-      <p id="chart-pattern-detail" class="status" style="min-height: 1.2em;"></p>
+      <div id="chart-live-anchor"></div>
+      <div id="chart-live-wrap" style="position:relative;">
+        <button type="button" id="chart-expand-btn" class="ghost" title="Expand chart" aria-label="Expand chart"
+          style="position:absolute; top:0.5rem; right:0.5rem; z-index:5; padding:0.25rem 0.55rem; font-size:1rem; line-height:1;">&#10530;</button>
+        <div id="chart-container" style="height: 440px; margin-top: 0.75rem;"></div>
+        <p id="chart-pattern-detail" class="status" style="min-height: 1.2em;"></p>
+        <div id="chart-alert-popover" style="display:none; position:absolute; z-index:6; width:230px; background:var(--card); border:1px solid var(--border); border-radius:8px; box-shadow:var(--shadow); padding:0.6rem 0.7rem; font-size:0.85rem;">
+          <div style="margin-bottom:0.5rem;">Add price alert at <strong id="chart-alert-popover-price"></strong>?</div>
+          <label style="display:block; margin-bottom:0.5rem;">
+            <span class="hint">Stop watching by (optional)</span>
+            <input id="chart-alert-popover-deadline" type="datetime-local" style="display:block; width:100%; margin-top:0.25rem;">
+          </label>
+          <div class="row-inline" style="margin:0; gap:0.4rem;">
+            <button type="button" id="chart-alert-popover-confirm" class="ghost">Add alert</button>
+            <button type="button" id="chart-alert-popover-cancel" class="ghost">Cancel</button>
+          </div>
+        </div>
+      </div>
 
       <details class="edu-block" style="margin-top: 1rem;">
         <summary>What do these pattern names mean?</summary>
@@ -753,6 +781,16 @@
         </div>
       </details>
     </section>
+
+    <div id="chart-fullscreen-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:1000; padding:1.5rem; overflow-y:auto;">
+      <div style="max-width:1100px; margin:0 auto; background:var(--card); border:1px solid var(--border); border-radius:12px; box-shadow:var(--shadow); padding:1rem 1.25rem 1.25rem; position:relative;">
+        <div class="row-inline" style="justify-content:space-between; align-items:center; margin-bottom:0.25rem;">
+          <h3 style="margin:0;">Chart</h3>
+          <button type="button" id="chart-collapse-btn" class="ghost">&times; Close</button>
+        </div>
+        <div id="chart-fullscreen-slot"></div>
+      </div>
+    </div>
 
     <section id="news-section">
       <h2>News</h2>
@@ -1536,6 +1574,14 @@
     // immediately.
     const priceAlertLastPrice = {};
 
+    // Full date *and* time (not just a date), since a deadline is
+    // meaningless without knowing the time of day it cuts off at.
+    function formatAlertDeadline(ms) {
+      return new Date(ms).toLocaleString(undefined, {
+        year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+      });
+    }
+
     function renderPriceAlerts() {
       const list = document.getElementById('price-alert-list');
       if (priceAlerts.length === 0) {
@@ -1544,9 +1590,26 @@
       }
       list.innerHTML = priceAlerts.map(a => `
         <li class="row-inline" style="margin-bottom:0.4rem;">
-          <span>${escapeHtml(a.type)}:${escapeHtml(a.symbol)} &mdash; notify at ${fmtUsd(a.target)}</span>
+          <span>${escapeHtml(a.type)}:${escapeHtml(a.symbol)} &mdash; notify at ${fmtUsd(a.target)}
+            ${a.expiresAt ? `<span class="hint">(stops watching ${formatAlertDeadline(a.expiresAt)})</span>` : ''}</span>
           <button class="ghost" data-remove-alert="${a.id}">Remove</button>
         </li>`).join('');
+    }
+
+    // Shared by the manual form below and the click-on-chart popover, so
+    // both paths create identical alert objects and stay in sync with
+    // whatever's drawn on the chart. `expiresAt` (ms epoch, or null) is
+    // purely a "stop watching by" cutoff — this simulator has no server,
+    // so it can't notify once the tab is closed either way; the deadline
+    // just avoids an old alert lingering forever.
+    function addPriceAlert(type, symbol, target, expiresAt) {
+      priceAlerts.push({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        type, symbol, target, expiresAt: expiresAt || null
+      });
+      savePriceAlerts();
+      renderPriceAlerts();
+      renderChartAlertLines();
     }
 
     document.getElementById('add-price-alert-btn').addEventListener('click', () => {
@@ -1554,6 +1617,7 @@
       const type = document.getElementById('price-alert-type').value;
       const symbolInput = document.getElementById('price-alert-symbol');
       const targetInput = document.getElementById('price-alert-target');
+      const deadlineInput = document.getElementById('price-alert-deadline');
       const symbolRaw = symbolInput.value.trim();
       const target = parseFloat(targetInput.value);
 
@@ -1564,11 +1628,11 @@
       }
 
       const symbol = type === 'stock' ? symbolRaw.toUpperCase() : symbolRaw.toLowerCase();
-      priceAlerts.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, type, symbol, target });
-      savePriceAlerts();
-      renderPriceAlerts();
+      const expiresAt = deadlineInput.value ? new Date(deadlineInput.value).getTime() : null;
+      addPriceAlert(type, symbol, target, expiresAt);
       symbolInput.value = '';
       targetInput.value = '';
+      deadlineInput.value = '';
       statusEl.textContent = `Watching ${symbol} for ${fmtUsd(target)}.`;
       statusEl.className = 'status';
     });
@@ -1579,16 +1643,20 @@
       priceAlerts = priceAlerts.filter(a => a.id !== id);
       savePriceAlerts();
       renderPriceAlerts();
+      renderChartAlertLines();
     });
 
     // Checks live prices against active price-target alerts, firing a
     // one-shot notification the moment price crosses a target in either
     // direction — mirrors checkTrendChanges/checkMoverChanges (only while
     // alertsEnabled, only on an actual transition), except a fired alert
-    // is removed instead of just re-armed for next time.
+    // is removed instead of just re-armed for next time. Alerts past
+    // their optional deadline are purged the same way, just silently
+    // (no notification — the point of a deadline is to stop watching).
     function checkPriceAlerts(type, items) {
       if (priceAlerts.length === 0) return;
-      const firedIds = [];
+      const now = Date.now();
+      const removedIds = priceAlerts.filter(a => a.expiresAt && a.expiresAt < now).map(a => a.id);
       for (const { key, label, price } of items) {
         if (price == null) continue;
         const compositeKey = `${type}:${key}`;
@@ -1598,18 +1666,20 @@
 
         for (const alert of priceAlerts) {
           if (alert.type !== type || alert.symbol !== key) continue;
+          if (alert.expiresAt && alert.expiresAt < now) continue;
           const crossedUp = prevPrice < alert.target && price >= alert.target;
           const crossedDown = prevPrice > alert.target && price <= alert.target;
           if (alertsEnabled && (crossedUp || crossedDown)) {
             notify(`${label} hit your target of ${fmtUsd(alert.target)}`, `Now at ${fmtUsd(price)}.`);
-            firedIds.push(alert.id);
+            removedIds.push(alert.id);
           }
         }
       }
-      if (firedIds.length > 0) {
-        priceAlerts = priceAlerts.filter(a => !firedIds.includes(a.id));
+      if (removedIds.length > 0) {
+        priceAlerts = priceAlerts.filter(a => !removedIds.includes(a.id));
         savePriceAlerts();
         renderPriceAlerts();
+        renderChartAlertLines();
       }
     }
 
@@ -1940,6 +2010,7 @@
       // belonged to the series just removed above.
       highPriceLine = null;
       lowPriceLine = null;
+      alertPriceLines = [];
       // Pattern markers carry no permanent text label (see
       // renderPatternMarkers) specifically to avoid crowding the chart
       // with dozens of overlapping labels — clicking a candle instead
@@ -1951,25 +2022,176 @@
 
     // Unix seconds (crypto candles) or a 'YYYY-MM-DD' string (stock
     // candles, from Twelve Data) — fetchCryptoOhlc/fetchStockOhlc use
-    // different time representations, so this accepts either.
+    // different time representations, so this accepts either. Crypto
+    // candles are 4-hourly (see fetchCryptoOhlc), so the time of day is
+    // real, meaningful data, not just padding — always shown alongside
+    // the date. Stock candles are daily, so their time always reads as
+    // midnight; a minor cosmetic wart, not a correctness issue, since a
+    // daily bar has no true intraday timestamp to show instead.
     function formatChartTime(t) {
       const date = typeof t === 'number' ? new Date(t * 1000) : new Date(t);
-      return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+      return date.toLocaleString(undefined, {
+        year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+      });
     }
 
+    // The chart lives in one DOM element (#chart-live-wrap) that's
+    // physically relocated between its normal spot in the page and the
+    // fullscreen modal's slot, rather than creating a second Lightweight
+    // Charts instance — one chart object stays the source of truth for
+    // zoom/pan state, markers, and price lines the whole time, so
+    // expanding never re-fetches or re-renders anything. #chart-live-anchor
+    // is a permanent, never-moved marker of "home" so collapseChart can
+    // always find its way back regardless of what else changed on the
+    // page while expanded.
+    let chartExpanded = false;
+
+    function expandChart() {
+      if (chartExpanded || !priceChart) return;
+      hideChartAlertPopover();
+      const wrap = document.getElementById('chart-live-wrap');
+      const slot = document.getElementById('chart-fullscreen-slot');
+      const container = document.getElementById('chart-container');
+      slot.appendChild(wrap);
+      document.getElementById('chart-expand-btn').style.display = 'none';
+      container.style.height = '70vh';
+      document.getElementById('chart-fullscreen-modal').style.display = 'block';
+      document.body.style.overflow = 'hidden';
+      chartExpanded = true;
+      requestAnimationFrame(() => priceChart.resize(container.clientWidth, container.clientHeight));
+    }
+
+    function collapseChart() {
+      if (!chartExpanded) return;
+      hideChartAlertPopover();
+      const anchor = document.getElementById('chart-live-anchor');
+      const wrap = document.getElementById('chart-live-wrap');
+      const container = document.getElementById('chart-container');
+      anchor.insertAdjacentElement('afterend', wrap);
+      document.getElementById('chart-expand-btn').style.display = '';
+      container.style.height = '440px';
+      document.getElementById('chart-fullscreen-modal').style.display = 'none';
+      document.body.style.overflow = '';
+      chartExpanded = false;
+      if (priceChart) requestAnimationFrame(() => priceChart.resize(container.clientWidth, container.clientHeight));
+    }
+
+    document.getElementById('chart-expand-btn').addEventListener('click', expandChart);
+    document.getElementById('chart-collapse-btn').addEventListener('click', collapseChart);
+    document.getElementById('chart-fullscreen-modal').addEventListener('click', e => {
+      if (e.target.id === 'chart-fullscreen-modal') collapseChart();
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key !== 'Escape') return;
+      if (document.getElementById('chart-alert-popover').style.display === 'block') {
+        hideChartAlertPopover();
+      } else if (chartExpanded) {
+        collapseChart();
+      }
+    });
+
+    // Recreated on every render (createPriceLine has no update-in-place
+    // call), same approach as renderHighLowLines — one dashed line per
+    // active price alert that matches whatever symbol is currently
+    // loaded in the chart. Alerts for other symbols simply aren't drawn;
+    // they still exist and still fire, they just don't clutter a chart
+    // for a different asset.
+    let alertPriceLines = [];
+
+    function renderChartAlertLines() {
+      if (!candleSeries) return;
+      alertPriceLines.forEach(line => candleSeries.removePriceLine(line));
+      alertPriceLines = [];
+      if (!lastChartType || !lastChartSymbol) return;
+      priceAlerts
+        .filter(a => a.type === lastChartType && a.symbol === lastChartSymbol)
+        .forEach(a => {
+          alertPriceLines.push(candleSeries.createPriceLine({
+            price: a.target,
+            color: '#7c3aed',
+            lineWidth: 2,
+            lineStyle: LightweightCharts.LineStyle.Dashed,
+            axisLabelVisible: true,
+            title: a.expiresAt ? `Alert (by ${formatAlertDeadline(a.expiresAt)})` : 'Alert'
+          }));
+        });
+    }
+
+    // Click-to-set-a-price-alert popover: positioned in pixel space
+    // relative to #chart-live-wrap (its nearest positioned ancestor),
+    // computed from bounding rects rather than assumed offsets so it
+    // stays correct whether the chart is in its normal spot or has been
+    // relocated into the fullscreen modal (see expandChart/collapseChart).
+    function showChartAlertPopover(point) {
+      if (!candleSeries || !lastChartType || !lastChartSymbol) return;
+      const price = candleSeries.coordinateToPrice(point.y);
+      if (price == null) return;
+
+      const popover = document.getElementById('chart-alert-popover');
+      popover.dataset.price = price;
+      document.getElementById('chart-alert-popover-price').textContent = fmtUsd(price);
+      document.getElementById('chart-alert-popover-deadline').value = '';
+
+      const wrap = document.getElementById('chart-live-wrap');
+      const wrapRect = wrap.getBoundingClientRect();
+      const containerRect = document.getElementById('chart-container').getBoundingClientRect();
+      const left = containerRect.left - wrapRect.left + point.x;
+      const top = containerRect.top - wrapRect.top + point.y;
+      popover.style.left = Math.max(0, Math.min(left + 10, wrap.clientWidth - 240)) + 'px';
+      popover.style.top = Math.max(0, top - 10) + 'px';
+      popover.style.display = 'block';
+    }
+
+    function hideChartAlertPopover() {
+      document.getElementById('chart-alert-popover').style.display = 'none';
+    }
+
+    document.getElementById('chart-alert-popover-cancel').addEventListener('click', hideChartAlertPopover);
+    document.getElementById('chart-alert-popover-confirm').addEventListener('click', () => {
+      const popover = document.getElementById('chart-alert-popover');
+      const price = parseFloat(popover.dataset.price);
+      if (!(price > 0) || !lastChartType || !lastChartSymbol) { hideChartAlertPopover(); return; }
+      const deadlineValue = document.getElementById('chart-alert-popover-deadline').value;
+      const expiresAt = deadlineValue ? new Date(deadlineValue).getTime() : null;
+      addPriceAlert(lastChartType, lastChartSymbol, price, expiresAt);
+      hideChartAlertPopover();
+      const statusEl = document.getElementById('chart-status');
+      statusEl.textContent = `Watching ${lastChartSymbol} for ${fmtUsd(price)}.`;
+      statusEl.className = 'status';
+    });
+    document.addEventListener('click', e => {
+      const popover = document.getElementById('chart-alert-popover');
+      if (popover.style.display !== 'block') return;
+      if (popover.contains(e.target) || document.getElementById('chart-container').contains(e.target)) return;
+      hideChartAlertPopover();
+    });
+
     function handleChartClick(param) {
+      // Any click on the chart itself (not just a candle that resolves
+      // to a pattern) expands it — matches clicking the explicit expand
+      // button, just discoverable without it.
+      expandChart();
       const detailEl = document.getElementById('chart-pattern-detail');
-      if (!detailEl || !param.time || lastLoadedCandles.length === 0) return;
-      const index = lastLoadedCandles.findIndex(c => c.time === param.time);
-      if (index === -1) return;
-      const candle = lastLoadedCandles[index];
-      const dateText = formatChartTime(candle.time);
-      const ohlcText = `O ${fmtUsd(candle.open)} H ${fmtUsd(candle.high)} L ${fmtUsd(candle.low)} C ${fmtUsd(candle.close)}`;
-      const match = detectPatterns(lastLoadedCandles).find(m => m.index === index);
-      detailEl.textContent = match
-        ? `${dateText}: ${match.pattern} — ${ohlcText}`
-        : `${dateText}: no pattern on this candle — ${ohlcText}`;
-      detailEl.className = 'status';
+      if (detailEl && param.time && lastLoadedCandles.length > 0) {
+        const index = lastLoadedCandles.findIndex(c => c.time === param.time);
+        if (index !== -1) {
+          const candle = lastLoadedCandles[index];
+          const dateText = formatChartTime(candle.time);
+          const ohlcText = `O ${fmtUsd(candle.open)} H ${fmtUsd(candle.high)} L ${fmtUsd(candle.low)} C ${fmtUsd(candle.close)}`;
+          const match = detectPatterns(lastLoadedCandles).find(m => m.index === index);
+          detailEl.textContent = match
+            ? `${dateText}: ${match.pattern} — ${ohlcText}`
+            : `${dateText}: no pattern on this candle — ${ohlcText}`;
+          detailEl.className = 'status';
+        }
+      }
+      // A click resolves to a price (via the y-coordinate) as long as it
+      // landed inside the chart's plot area, even off to the side where
+      // there's no candle at that x position — same "click the chart"
+      // gesture works whether or not you land exactly on a candle.
+      if (param.point) {
+        showChartAlertPopover(param.point);
+      }
     }
 
     async function loadChart() {
@@ -2020,6 +2242,7 @@
         lastChartType = assetType;
         lastChartSymbol = normSymbol;
         lastAlertedPatternCandleTime = candles[candles.length - 1].time;
+        renderChartAlertLines();
 
         statusEl.textContent = `Loaded ${candles.length} candles for ${normSymbol}.`;
         statusEl.className = 'status';
@@ -2061,6 +2284,7 @@
         lastLoadedCandles = candles;
         renderPatternMarkers();
         renderHighLowLines();
+        renderChartAlertLines();
 
         if (!document.getElementById('chart-patterns-toggle').checked) return;
         const lastIndex = candles.length - 1;
