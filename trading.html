@@ -897,6 +897,13 @@
                 goes.</p>
             </div>
           </div>
+          <p class="hint">
+            Buying a call is called a <strong>Long Call</strong>; buying a
+            put is a <strong>Long Put</strong> &mdash; the standard names
+            for these two positions, used on the order form and in your
+            open positions below. "Long" here just means you bought it
+            (own the right), same sense as owning a stock outright.
+          </p>
           <dl>
             <dt>Premium</dt>
             <dd>What you pay to open the position. As a buyer &mdash; which
@@ -1043,6 +1050,11 @@
 
       <h3 style="font-size: 0.95rem; margin: 1.25rem 0 0.75rem;">Options</h3>
       <dl>
+        <dt>Breakeven</dt>
+        <dd>The underlying price at expiration where a position exactly
+          breaks even &mdash; strike plus premium paid for a long call,
+          strike minus premium paid for a long put. Shown on each open
+          position's payoff diagram.</dd>
         <dt>Call</dt>
         <dd>A contract giving the right, but not the obligation, to buy
           the underlying at the strike price on or before expiration.
@@ -1059,6 +1071,17 @@
           the strike (and "out of the money" below it); a put is the
           reverse. An option that's out of the money at expiration is
           worth exactly $0.</dd>
+        <dt>Long Call / Long Put</dt>
+        <dd>The standard names for simply buying a call or buying a
+          put &mdash; "long" meaning you own the right, the same sense as
+          owning a stock outright. Every position this simulator can
+          hold is one of these two, since it only buys options, never
+          writes (sells) them.</dd>
+        <dt>Payoff diagram</dt>
+        <dd>A chart of profit/loss at expiration across a range of
+          possible underlying prices, shown on each open option
+          position. Assumes holding to expiration; closing early almost
+          always plays out differently.</dd>
         <dt>Premium</dt>
         <dd>The upfront cost of buying an option contract. As a buyer,
           this is also your maximum possible loss, no matter how wrong
@@ -2481,6 +2504,73 @@
       `;
     }
 
+    // Inline SVG payoff diagram for one long option position — profit/
+    // loss at expiration across a range of hypothetical underlying
+    // prices (centered on the live price if we have one, else the
+    // strike), via optionPayoffAtExpiration/optionBreakeven in
+    // options.js. Self-contained (no charting library dependency),
+    // since it's a simple line rather than a real time series.
+    function payoffDiagramSvg(opt) {
+      const { strike, premiumPaid: premium, quantity, optionType: kind } = opt;
+      const currentPrice = paperLivePrices[paperPositionKey(opt.assetType, opt.symbol)];
+      const center = currentPrice != null ? currentPrice : strike;
+      if (!(center > 0)) return '<p class="hint">Not enough price data yet for a payoff diagram.</p>';
+
+      const rangeLow = center * 0.5;
+      const rangeHigh = center * 1.5;
+      const steps = 40;
+      const points = [];
+      for (let i = 0; i <= steps; i++) {
+        const price = rangeLow + (rangeHigh - rangeLow) * (i / steps);
+        points.push({ price, pl: optionPayoffAtExpiration(kind, strike, premium, quantity, price) });
+      }
+      const plValues = points.map(p => p.pl);
+      const plMin = Math.min(...plValues, 0);
+      const plMax = Math.max(...plValues, 0);
+      const plRange = (plMax - plMin) || 1;
+      const priceRange = (rangeHigh - rangeLow) || 1;
+
+      const width = 320, height = 150, marginLeft = 50, marginRight = 12, marginTop = 14, marginBottom = 24;
+      const plotW = width - marginLeft - marginRight;
+      const plotH = height - marginTop - marginBottom;
+      const x = price => marginLeft + ((price - rangeLow) / priceRange) * plotW;
+      const y = pl => marginTop + (1 - (pl - plMin) / plRange) * plotH;
+
+      const colors = chartColors();
+      const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${x(p.price).toFixed(1)} ${y(p.pl).toFixed(1)}`).join(' ');
+      const strikeInRange = strike >= rangeLow && strike <= rangeHigh;
+
+      const svg = `
+        <svg viewBox="0 0 ${width} ${height}" width="100%" style="max-width:360px; display:block;">
+          <line x1="${marginLeft}" y1="${y(0).toFixed(1)}" x2="${width - marginRight}" y2="${y(0).toFixed(1)}" stroke="${colors.grid}" stroke-width="1" stroke-dasharray="3,3"/>
+          ${strikeInRange ? `<line x1="${x(strike).toFixed(1)}" y1="${marginTop}" x2="${x(strike).toFixed(1)}" y2="${height - marginBottom}" stroke="${colors.grid}" stroke-width="1" stroke-dasharray="2,4"/>
+          <text x="${x(strike).toFixed(1)}" y="${marginTop - 3}" font-size="8" fill="${colors.text}" text-anchor="middle">Strike</text>` : ''}
+          ${currentPrice != null ? `<line x1="${x(currentPrice).toFixed(1)}" y1="${marginTop}" x2="${x(currentPrice).toFixed(1)}" y2="${height - marginBottom}" stroke="${colors.up}" stroke-width="1" stroke-dasharray="2,2"/>
+          <text x="${x(currentPrice).toFixed(1)}" y="${height - marginBottom + 11}" font-size="8" fill="${colors.up}" text-anchor="middle">Now</text>` : ''}
+          <path d="${pathD}" fill="none" stroke="${colors.text}" stroke-width="2"/>
+          <text x="2" y="${marginTop + 8}" font-size="9" fill="${colors.text}">${fmtUsd(plMax)}</text>
+          <text x="2" y="${height - marginBottom}" font-size="9" fill="${colors.text}">${fmtUsd(plMin)}</text>
+          <text x="${marginLeft}" y="${height - 4}" font-size="9" fill="${colors.text}">${fmtUsd(rangeLow)}</text>
+          <text x="${width - marginRight}" y="${height - 4}" font-size="9" fill="${colors.text}" text-anchor="end">${fmtUsd(rangeHigh)}</text>
+        </svg>`;
+
+      const breakeven = optionBreakeven(kind, strike, premium);
+      const maxLoss = premium * quantity;
+      const maxGainText = kind === 'call'
+        ? 'gain is theoretically unlimited the higher the price goes'
+        : `max gain is ${fmtUsd((strike * quantity) - maxLoss)} if the price falls to zero`;
+
+      return `
+        ${svg}
+        <p class="hint" style="margin: 0.4rem 0 0;">
+          Breakeven at expiration: <strong>${fmtUsd(breakeven)}</strong>. Max loss:
+          <strong>${fmtUsd(maxLoss)}</strong> (the premium paid, if this expires worthless) &mdash;
+          ${maxGainText}. This assumes holding to expiration; closing early
+          almost always plays out differently since time value hasn't
+          fully decayed yet.
+        </p>`;
+    }
+
     function renderOptions() {
       const tbody = document.getElementById('options-rows');
       if (paperState.options.length === 0) {
@@ -2492,7 +2582,7 @@
         const totalPl = value != null ? (value - opt.premiumPaid) * opt.quantity : null;
         const plClass = totalPl == null ? 'flat' : totalPl >= 0 ? 'up' : 'down';
         const daysLeft = Math.max(Math.ceil((opt.expiresAt - Date.now()) / (24 * 60 * 60 * 1000)), 0);
-        const contractLabel = `${opt.symbol.toUpperCase()} $${opt.strike} ${opt.optionType === 'call' ? 'Call' : 'Put'}`;
+        const contractLabel = `${opt.symbol.toUpperCase()} $${opt.strike} ${opt.optionType === 'call' ? 'Long Call' : 'Long Put'}`;
         return `
           <tr>
             <td>${contractLabel}</td>
@@ -2505,6 +2595,12 @@
           </tr>
           <tr>
             <td colspan="7" style="padding-top:0; border-bottom: none;">
+              <details>
+                <summary class="hint" style="cursor:pointer;">Payoff diagram at expiration</summary>
+                <div style="margin: 0.5rem 0 0.25rem;">
+                  ${payoffDiagramSvg(opt)}
+                </div>
+              </details>
               <details>
                 <summary class="hint" style="cursor:pointer;">Why did this change?</summary>
                 <div class="hint" style="margin: 0.5rem 0 0.25rem; line-height: 1.8;">

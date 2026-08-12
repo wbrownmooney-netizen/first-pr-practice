@@ -62,7 +62,8 @@
       <code>signals.js</code>,
       <code>buyPosition</code>/<code>sellPosition</code>/<code>realizedGain</code>/<code>holdingTimeBias</code>
       from <code>portfolio.js</code>, and <code>blackScholesPrice</code>/
-      <code>decomposeOptionChange</code> from <code>options.js</code>, and
+      <code>decomposeOptionChange</code>/<code>optionPayoffAtExpiration</code>/
+      <code>optionBreakeven</code> from <code>options.js</code>, and
       <code>isDoji</code>/<code>isHammer</code>/<code>isShootingStar</code>/
       <code>isBullishEngulfing</code>/<code>isBearishEngulfing</code>/
       <code>isMorningStar</code>/<code>isEveningStar</code>/<code>detectPatterns</code>
@@ -325,6 +326,35 @@
       assertApprox(d.timeDecay, -0.888942, 0.001, 'time decay');
       assertApprox(d.priceMove, 5.542802, 0.001, 'price move');
       if (!(d.timeDecay < 0)) throw new Error('time decay should be negative regardless of option type');
+    });
+
+    test('optionPayoffAtExpiration: long call, underlying above strike -> intrinsic minus premium', () => {
+      assertEqual(optionPayoffAtExpiration('call', 100, 5, 1, 120), 15, 'call payoff');
+    });
+
+    test('optionPayoffAtExpiration: long call, underlying below strike -> capped loss at premium paid', () => {
+      assertEqual(optionPayoffAtExpiration('call', 100, 5, 1, 80), -5, 'call payoff');
+    });
+
+    test('optionPayoffAtExpiration: long put, underlying below strike -> intrinsic minus premium', () => {
+      assertEqual(optionPayoffAtExpiration('put', 100, 5, 1, 80), 15, 'put payoff');
+    });
+
+    test('optionPayoffAtExpiration: scales linearly with quantity', () => {
+      assertEqual(optionPayoffAtExpiration('call', 100, 5, 3, 120), 45, 'call payoff x3');
+    });
+
+    test('optionBreakeven: long call breakeven is strike plus premium', () => {
+      assertEqual(optionBreakeven('call', 100, 5), 105, 'call breakeven');
+    });
+
+    test('optionBreakeven: long put breakeven is strike minus premium', () => {
+      assertEqual(optionBreakeven('put', 100, 5), 95, 'put breakeven');
+    });
+
+    test('optionBreakeven: payoff at the breakeven price is exactly zero', () => {
+      const breakeven = optionBreakeven('call', 100, 5);
+      assertApprox(optionPayoffAtExpiration('call', 100, 5, 2, breakeven), 0, 1e-9, 'payoff at breakeven');
     });
 
     test('isDoji: tiny body relative to range -> true', () => {

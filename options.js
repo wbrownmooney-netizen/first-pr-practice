@@ -30,6 +30,24 @@ function blackScholesPrice(kind, S, K, T, r, sigma) {
   return K * Math.exp(-r * T) * normCdf(-d2) - S * normCdf(-d1);
 }
 
+// Profit/loss for one long position (this simulator only ever buys,
+// never writes/sells, options — "long call"/"long put" is every
+// position it can hold) at expiration, for a hypothetical underlying
+// price. Reuses blackScholesPrice's T<=0 branch (exact intrinsic value)
+// since volatility/rate stop mattering once time to expiry hits zero —
+// passing 0 for both is safe, not a placeholder guess.
+function optionPayoffAtExpiration(kind, strike, premiumPaid, quantity, underlyingPrice) {
+  const intrinsic = blackScholesPrice(kind, underlyingPrice, strike, 0, 0, 0);
+  return (intrinsic - premiumPaid) * quantity;
+}
+
+// The underlying price at which a long position neither gains nor
+// loses — independent of quantity, since quantity only scales the P/L
+// curve without shifting where it crosses zero.
+function optionBreakeven(kind, strike, premiumPaid) {
+  return kind === 'call' ? strike + premiumPaid : strike - premiumPaid;
+}
+
 // Educational breakdown of *why* an option's value moved between two
 // points in time. Since this simulator holds volatility fixed per asset
 // class, the only two things that actually change between opening and
