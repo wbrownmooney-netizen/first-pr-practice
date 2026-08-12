@@ -720,6 +720,10 @@
         optionally attach a date/time it should stop watching by) before
         adding it to the Price target alerts list above, with a dashed
         line drawn on the chart so you can see it at a glance.
+        <strong>Drag along the date row (bottom) or price column
+        (right)</strong> to scroll through more history or a wider price
+        range &mdash; dragging inside the chart itself pans too; double-tap
+        either edge to snap back.
       </p>
       <p id="chart-status" class="status"></p>
       <div id="chart-live-anchor"></div>
@@ -727,6 +731,8 @@
         <button type="button" id="chart-expand-btn" class="ghost" title="Expand chart" aria-label="Expand chart"
           style="position:absolute; top:0.5rem; right:0.5rem; z-index:5; padding:0.25rem 0.55rem; font-size:1rem; line-height:1;">&#10530;</button>
         <div id="chart-container" style="height: 440px; margin-top: 0.75rem;"></div>
+        <div id="chart-time-axis-overlay" title="Drag to scroll through dates" style="position:absolute; z-index:4; cursor:ew-resize; touch-action:none;"></div>
+        <div id="chart-price-axis-overlay" title="Drag to scroll through prices" style="position:absolute; z-index:4; cursor:ns-resize; touch-action:none;"></div>
         <p id="chart-pattern-detail" class="status" style="min-height: 1.2em;"></p>
         <div id="chart-alert-popover" style="display:none; position:absolute; z-index:6; width:230px; background:var(--card); border:1px solid var(--border); border-radius:8px; box-shadow:var(--shadow); padding:0.6rem 0.7rem; font-size:0.85rem;">
           <div style="margin-bottom:0.5rem;">Add price alert at <strong id="chart-alert-popover-price"></strong>?</div>
@@ -1985,6 +1991,12 @@
         : { bg: '#ffffff', text: '#1a1a1a', grid: '#e5e7eb', up: '#16a34a', down: '#dc2626' };
     }
 
+    // Declared explicitly (rather than left at the library default) so
+    // the price-axis drag-to-pan math below can know exactly how much
+    // headroom is baked around the visible range and correct for it —
+    // see the note above continueAxisDrag's price branch.
+    const PRICE_SCALE_MARGINS = { top: 0.1, bottom: 0.1 };
+
     function ensureChart() {
       const container = document.getElementById('chart-container');
       if (priceChart) {
@@ -1999,7 +2011,7 @@
         layout: { background: { color: colors.bg }, textColor: colors.text },
         grid: { vertLines: { color: colors.grid }, horzLines: { color: colors.grid } },
         timeScale: { borderColor: colors.grid },
-        rightPriceScale: { borderColor: colors.grid }
+        rightPriceScale: { borderColor: colors.grid, scaleMargins: PRICE_SCALE_MARGINS }
       });
       candleSeries = priceChart.addCandlestickSeries({
         upColor: colors.up, downColor: colors.down,
@@ -2017,8 +2029,162 @@
       // looks it up on demand. Each fresh chart needs its own
       // subscription since the whole chart object is recreated above.
       priceChart.subscribeClick(handleChartClick);
+      // The price axis's width depends on the width of its price labels,
+      // which isn't settled until the chart actually has data to draw —
+      // right after creation (no data yet) it reports a stale/zero
+      // width, so positioning is deferred a frame rather than done
+      // synchronously here.
+      requestAnimationFrame(positionChartAxisOverlays);
       return candleSeries;
     }
+
+    // --- Drag-to-scroll on the axes -----------------------------------
+    // Lightweight Charts' own built-in axis-drag gesture *scales* (zooms)
+    // the time/price range rather than panning it — useful, but not what
+    // "scroll through more dates/prices" means. These two transparent
+    // overlay divs sit on top of the axis strips and capture the drag
+    // themselves instead, so dragging there pans (like dragging inside
+    // the chart body already does) rather than stretching the range.
+    //
+    // Time-axis panning uses the public timeScale API directly
+    // (getVisibleLogicalRange/setVisibleLogicalRange) — straightforward.
+    // Price-axis panning has no equivalent public "shift the visible
+    // price range" call in this chart library version — the only lever
+    // that actually moves it is
+    // candleSeries.applyOptions({ autoscaleInfoProvider }), which forces
+    // an exact {minValue, maxValue}. That override turns out to be
+    // one-way in this library version — reassigning it to null/undefined
+    // afterward doesn't clear it (tested directly) — so resetting the
+    // price axis instead recreates the series from scratch, which
+    // reliably restores normal auto-fit; renderHighLowLines/
+    // renderPatternMarkers/renderChartAlertLines are re-run afterward
+    // since a fresh series starts with none of those attached.
+    let axisDragState = null;
+
+    function priceAxisPaneHeight() {
+      return document.getElementById('chart-container').clientHeight - priceChart.timeScale().height();
+    }
+
+    function beginAxisDrag(axis, e) {
+      if (!priceChart || !candleSeries) return;
+      if (axis === 'time') {
+        axisDragState = { axis, lastX: e.clientX };
+      } else {
+        const paneHeight = priceAxisPaneHeight();
+        // Read the currently-*displayed* top/bottom (padded by
+        // PRICE_SCALE_MARGINS) before touching anything — this is the
+        // view the user is actually looking at and expects to shift.
+        const topPrice = candleSeries.coordinateToPrice(0);
+        const bottomPrice = candleSeries.coordinateToPrice(paneHeight);
+        if (topPrice == null || bottomPrice == null) return;
+        // From here on, autoscaleInfoProvider's returned range becomes
+        // the literal displayed range with zero further padding — so
+        // feeding back these exact (already-padded) numbers as the very
+        // first override reproduces the current view pixel-for-pixel,
+        // instead of the margin being applied a second time on top of
+        // itself (which was visibly inflating/zooming the range the
+        // instant a drag began, before verifying against a live chart
+        // caught it).
+        priceChart.priceScale('right').applyOptions({ scaleMargins: { top: 0, bottom: 0 } });
+        axisDragState = { axis, lastY: e.clientY, topPrice, bottomPrice };
+      }
+      // Wrapped defensively — some browsers reject this for a pointer id
+      // they no longer consider active (e.g. a stray/stale event), and
+      // that shouldn't take down the rest of the drag with it.
+      try { e.target.setPointerCapture(e.pointerId); } catch (err) { /* best-effort */ }
+      e.preventDefault();
+    }
+
+    function continueAxisDrag(e) {
+      if (!axisDragState || !priceChart) return;
+      if (axisDragState.axis === 'time') {
+        const dx = e.clientX - axisDragState.lastX;
+        if (dx === 0) return;
+        axisDragState.lastX = e.clientX;
+        const ts = priceChart.timeScale();
+        const range = ts.getVisibleLogicalRange();
+        const barSpacing = ts.options().barSpacing;
+        if (!range || !barSpacing) return;
+        const deltaBars = -dx / barSpacing;
+        ts.setVisibleLogicalRange({ from: range.from + deltaBars, to: range.to + deltaBars });
+      } else {
+        const dy = e.clientY - axisDragState.lastY;
+        if (dy === 0) return;
+        axisDragState.lastY = e.clientY;
+        const paneHeight = priceAxisPaneHeight();
+        if (!(paneHeight > 0)) return;
+        const pricePerPixel = (axisDragState.topPrice - axisDragState.bottomPrice) / paneHeight;
+        const priceDelta = dy * pricePerPixel;
+        axisDragState.topPrice += priceDelta;
+        axisDragState.bottomPrice += priceDelta;
+        const range = { minValue: axisDragState.bottomPrice, maxValue: axisDragState.topPrice };
+        candleSeries.applyOptions({ autoscaleInfoProvider: () => ({ priceRange: range }) });
+      }
+    }
+
+    function endAxisDrag() {
+      axisDragState = null;
+    }
+
+    function resetTimeAxis() {
+      if (priceChart) priceChart.timeScale().fitContent();
+    }
+
+    function resetPriceAxis() {
+      if (!priceChart || !candleSeries) return;
+      const colors = chartColors();
+      priceChart.removeSeries(candleSeries);
+      // beginAxisDrag zeroes the margin the moment a price-axis drag
+      // starts (see its comment) — restore the normal padding here so
+      // the next auto-fit render looks like it always did.
+      priceChart.priceScale('right').applyOptions({ scaleMargins: PRICE_SCALE_MARGINS });
+      candleSeries = priceChart.addCandlestickSeries({
+        upColor: colors.up, downColor: colors.down,
+        borderUpColor: colors.up, borderDownColor: colors.down,
+        wickUpColor: colors.up, wickDownColor: colors.down
+      });
+      candleSeries.setData(lastLoadedCandles);
+      renderHighLowLines();
+      renderPatternMarkers();
+      renderChartAlertLines();
+    }
+
+    // Re-measures and repositions the two overlay strips over wherever
+    // Lightweight Charts is actually drawing its axes right now — called
+    // after chart creation and after every resize (including
+    // expand/collapse into the fullscreen modal), since the price axis's
+    // width in particular changes with the visible price labels' digit
+    // count.
+    function positionChartAxisOverlays() {
+      if (!priceChart) return;
+      const container = document.getElementById('chart-container');
+      const timeAxisHeight = priceChart.timeScale().height();
+      const priceAxisWidth = priceChart.priceScale('right').width();
+      const top = container.offsetTop;
+      const left = container.offsetLeft;
+      const timeOverlay = document.getElementById('chart-time-axis-overlay');
+      timeOverlay.style.left = left + 'px';
+      timeOverlay.style.top = (top + container.clientHeight - timeAxisHeight) + 'px';
+      timeOverlay.style.width = Math.max(container.clientWidth - priceAxisWidth, 0) + 'px';
+      timeOverlay.style.height = timeAxisHeight + 'px';
+      const priceOverlay = document.getElementById('chart-price-axis-overlay');
+      priceOverlay.style.left = (left + container.clientWidth - priceAxisWidth) + 'px';
+      priceOverlay.style.top = top + 'px';
+      priceOverlay.style.width = priceAxisWidth + 'px';
+      priceOverlay.style.height = Math.max(container.clientHeight - timeAxisHeight, 0) + 'px';
+    }
+
+    const timeAxisOverlayEl = document.getElementById('chart-time-axis-overlay');
+    const priceAxisOverlayEl = document.getElementById('chart-price-axis-overlay');
+    [timeAxisOverlayEl, priceAxisOverlayEl].forEach(el => {
+      el.addEventListener('pointermove', continueAxisDrag);
+      el.addEventListener('pointerup', endAxisDrag);
+      el.addEventListener('pointercancel', endAxisDrag);
+    });
+    timeAxisOverlayEl.addEventListener('pointerdown', e => beginAxisDrag('time', e));
+    priceAxisOverlayEl.addEventListener('pointerdown', e => beginAxisDrag('price', e));
+    timeAxisOverlayEl.addEventListener('dblclick', resetTimeAxis);
+    priceAxisOverlayEl.addEventListener('dblclick', resetPriceAxis);
 
     // Unix seconds (crypto candles) or a 'YYYY-MM-DD' string (stock
     // candles, from Twelve Data) — fetchCryptoOhlc/fetchStockOhlc use
@@ -2058,7 +2224,10 @@
       document.getElementById('chart-fullscreen-modal').style.display = 'block';
       document.body.style.overflow = 'hidden';
       chartExpanded = true;
-      requestAnimationFrame(() => priceChart.resize(container.clientWidth, container.clientHeight));
+      requestAnimationFrame(() => {
+        priceChart.resize(container.clientWidth, container.clientHeight);
+        positionChartAxisOverlays();
+      });
     }
 
     function collapseChart() {
@@ -2073,7 +2242,10 @@
       document.getElementById('chart-fullscreen-modal').style.display = 'none';
       document.body.style.overflow = '';
       chartExpanded = false;
-      if (priceChart) requestAnimationFrame(() => priceChart.resize(container.clientWidth, container.clientHeight));
+      if (priceChart) requestAnimationFrame(() => {
+        priceChart.resize(container.clientWidth, container.clientHeight);
+        positionChartAxisOverlays();
+      });
     }
 
     document.getElementById('chart-expand-btn').addEventListener('click', expandChart);
@@ -2230,6 +2402,7 @@
         const series = ensureChart();
         series.setData(candles);
         priceChart.timeScale().fitContent();
+        requestAnimationFrame(positionChartAxisOverlays);
         lastLoadedCandles = candles;
         renderPatternMarkers();
         renderHighLowLines();
@@ -2357,6 +2530,7 @@
       if (!priceChart) return;
       const container = document.getElementById('chart-container');
       priceChart.resize(container.clientWidth, container.clientHeight);
+      positionChartAxisOverlays();
     });
 
     if (window.matchMedia) {
