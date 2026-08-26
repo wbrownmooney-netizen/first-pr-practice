@@ -263,6 +263,22 @@
   .down { color: var(--down); font-weight: 600; }
   .flat { color: var(--muted); }
   .row-inline { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-bottom: 0.9rem; }
+  /* #chart-live-wrap is the one physical DOM node that gets relocated
+     between its normal spot in the page and the fullscreen modal (see
+     expandChart/collapseChart) — making it a column flexbox, with the
+     chart itself as the only item that grows, means the chart
+     automatically fills whatever space is actually available in either
+     context (its own 440px in the normal page, the full remaining
+     screen height once the toolbar/detail-text take their share in
+     fullscreen) with no JS height math needed for either case. */
+  #chart-live-wrap { display: flex; flex-direction: column; height: 100%; }
+  #chart-drawing-toolbar { flex: 0 0 auto; }
+  #chart-container { flex: 1 1 auto; min-height: 0; }
+  #chart-pattern-detail { flex: 0 0 auto; }
+  /* Only while relocated into the fullscreen modal (this selector only
+     matches in that nesting) — clears space so the toolbar's first row
+     never sits under the close button in the modal's top-right corner. */
+  #chart-fullscreen-slot #chart-live-wrap { padding-top: 2.25rem; }
   select, input[type="text"], input[type="password"], input[type="number"] {
     padding: 0.55rem 0.7rem;
     border-radius: 8px;
@@ -740,17 +756,17 @@
         Click an existing drawing to delete it. Drawings save per symbol,
         so they're still there next time you load this chart.
       </p>
-      <div class="row-inline" style="gap:0.4rem;">
-        <button type="button" class="ghost" id="draw-tool-trendline" data-draw-tool="trendline" title="Trend line">&#8599; Trend line</button>
-        <button type="button" class="ghost" id="draw-tool-horizontal" data-draw-tool="horizontal" title="Horizontal line">&mdash; Horizontal</button>
-        <button type="button" class="ghost" id="draw-tool-rectangle" data-draw-tool="rectangle" title="Rectangle">&#9645; Rectangle</button>
-        <button type="button" class="ghost" id="draw-tool-text" data-draw-tool="text" title="Text note">T Text</button>
-        <input type="color" id="draw-color" value="#7c3aed" title="Drawing color" style="width:2.2rem; padding:0.15rem; height:2.2rem;">
-        <button type="button" class="ghost" id="draw-clear-btn" title="Remove every drawing on this symbol">Clear all</button>
-      </div>
       <p id="chart-status" class="status"></p>
       <div id="chart-live-anchor"></div>
       <div id="chart-live-wrap" style="position:relative;">
+        <div class="row-inline" id="chart-drawing-toolbar" style="gap:0.4rem;">
+          <button type="button" class="ghost" id="draw-tool-trendline" data-draw-tool="trendline" title="Trend line">&#8599; Trend line</button>
+          <button type="button" class="ghost" id="draw-tool-horizontal" data-draw-tool="horizontal" title="Horizontal line">&mdash; Horizontal</button>
+          <button type="button" class="ghost" id="draw-tool-rectangle" data-draw-tool="rectangle" title="Rectangle">&#9645; Rectangle</button>
+          <button type="button" class="ghost" id="draw-tool-text" data-draw-tool="text" title="Text note">T Text</button>
+          <input type="color" id="draw-color" value="#7c3aed" title="Drawing color" style="width:2.2rem; padding:0.15rem; height:2.2rem;">
+          <button type="button" class="ghost" id="draw-clear-btn" title="Remove every drawing on this symbol">Clear all</button>
+        </div>
         <button type="button" id="chart-expand-btn" class="ghost" title="Expand chart" aria-label="Expand chart"
           style="position:absolute; top:0.5rem; right:0.5rem; z-index:5; padding:0.25rem 0.55rem; font-size:1rem; line-height:1;">&#10530;</button>
         <div id="chart-container" style="height: 440px; margin-top: 0.75rem;"></div>
@@ -847,14 +863,10 @@
       </details>
     </section>
 
-    <div id="chart-fullscreen-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:1000; padding:1.5rem; overflow-y:auto;">
-      <div style="max-width:1100px; margin:0 auto; background:var(--card); border:1px solid var(--border); border-radius:12px; box-shadow:var(--shadow); padding:1rem 1.25rem 1.25rem; position:relative;">
-        <div class="row-inline" style="justify-content:space-between; align-items:center; margin-bottom:0.25rem;">
-          <h3 style="margin:0;">Chart</h3>
-          <button type="button" id="chart-collapse-btn" class="ghost">&times; Close</button>
-        </div>
-        <div id="chart-fullscreen-slot"></div>
-      </div>
+    <div id="chart-fullscreen-modal" style="display:none; position:fixed; inset:0; background:var(--bg); z-index:1000; overflow-y:auto;">
+      <button type="button" id="chart-collapse-btn" class="ghost" title="Close" aria-label="Close"
+        style="position:absolute; top:0.5rem; right:0.5rem; z-index:1001; padding:0.3rem 0.6rem; font-size:1rem; line-height:1;">&times;</button>
+      <div id="chart-fullscreen-slot" style="height:100%;"></div>
     </div>
 
     <section id="news-section">
@@ -2377,7 +2389,10 @@
       const container = document.getElementById('chart-container');
       slot.appendChild(wrap);
       document.getElementById('chart-expand-btn').style.display = 'none';
-      container.style.height = '70vh';
+      // No explicit height to set here — #chart-live-wrap's CSS flex
+      // layout (see its rule) automatically grows #chart-container to
+      // fill whatever space is actually available once it's relocated
+      // into the fullscreen slot, edge-to-edge.
       document.getElementById('chart-fullscreen-modal').style.display = 'block';
       document.body.style.overflow = 'hidden';
       chartExpanded = true;
@@ -2399,7 +2414,6 @@
       const container = document.getElementById('chart-container');
       anchor.insertAdjacentElement('afterend', wrap);
       document.getElementById('chart-expand-btn').style.display = '';
-      container.style.height = '440px';
       document.getElementById('chart-fullscreen-modal').style.display = 'none';
       document.body.style.overflow = '';
       chartExpanded = false;
@@ -2413,6 +2427,39 @@
 
     document.getElementById('chart-expand-btn').addEventListener('click', expandChart);
     document.getElementById('chart-collapse-btn').addEventListener('click', collapseChart);
+
+    // Independent tap-to-expand, deliberately not routed through
+    // Lightweight Charts' own subscribeClick (handleChartClick below) —
+    // that click detection has to distinguish a tap from the start of a
+    // pan/zoom drag, tuned mainly around mouse input; a real finger tap
+    // almost always drifts a few pixels, which is well within what a
+    // human would still call "just a tap" but can be enough for the
+    // library to call it a drag instead and never fire its click event
+    // at all. This listens directly to pointerdown/pointerup with a
+    // generous tolerance, so expanding the chart doesn't depend on that
+    // library's — mouse-tuned — gesture disambiguation.
+    let chartTapStart = null;
+    const TAP_MAX_DISTANCE_PX = 12;
+    const TAP_MAX_DURATION_MS = 500;
+    document.getElementById('chart-container').addEventListener('pointerdown', e => {
+      chartTapStart = { x: e.clientX, y: e.clientY, time: Date.now() };
+    });
+    document.getElementById('chart-container').addEventListener('pointerup', e => {
+      if (!chartTapStart) return;
+      const dx = Math.abs(e.clientX - chartTapStart.x);
+      const dy = Math.abs(e.clientY - chartTapStart.y);
+      const dt = Date.now() - chartTapStart.time;
+      chartTapStart = null;
+      // Skipped while a drawing tool is armed — that tap is placing a
+      // point, not asking to expand (matches handleChartClick's own
+      // early-exit for the same reason).
+      if (!activeDrawTool && dx <= TAP_MAX_DISTANCE_PX && dy <= TAP_MAX_DISTANCE_PX && dt <= TAP_MAX_DURATION_MS) {
+        expandChart();
+      }
+    });
+    document.getElementById('chart-container').addEventListener('pointercancel', () => {
+      chartTapStart = null;
+    });
     document.getElementById('chart-fullscreen-modal').addEventListener('click', e => {
       if (e.target.id === 'chart-fullscreen-modal') collapseChart();
     });
