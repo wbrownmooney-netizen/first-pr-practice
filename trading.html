@@ -2141,9 +2141,16 @@
       priceChart = LightweightCharts.createChart(container, {
         width: container.clientWidth,
         height: container.clientHeight,
-        layout: { background: { color: colors.bg }, textColor: colors.text },
+        layout: { background: { color: colors.bg }, textColor: colors.text, fontSize: 13 },
         grid: { vertLines: { color: colors.grid }, horzLines: { color: colors.grid } },
-        timeScale: { borderColor: colors.grid },
+        // timeVisible turns on hour:minute tick labels — without it the
+        // axis only ever shows a date, which on the intraday intervals
+        // (1 Minute/5 Minutes/1 Hour) means a run of candles all show
+        // the *same* repeated date with no way to tell them apart.
+        // secondsVisible stays off since none of this app's data is
+        // finer than 1-minute resolution, so seconds would just be a
+        // redundant ":00" on every label.
+        timeScale: { borderColor: colors.grid, timeVisible: true, secondsVisible: false },
         rightPriceScale: { borderColor: colors.grid, scaleMargins: PRICE_SCALE_MARGINS }
       });
       candleSeries = priceChart.addCandlestickSeries({
