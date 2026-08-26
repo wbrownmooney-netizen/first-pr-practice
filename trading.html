@@ -780,10 +780,17 @@
       </p>
       <p class="hint">
         <strong>Drawing tools:</strong> pick one below, then click the
-        chart to place it (trend line and rectangle need a second click
-        to finish; click anywhere to cancel a tool without finishing it).
-        Click an existing drawing to delete it. Drawings save per symbol,
-        so they're still there next time you load this chart.
+        chart to place it &mdash; trend line, rectangle, and &phi;
+        (Fibonacci retracement) need a second click to finish; horizontal
+        line and text note place on the first click; freehand (&#9998;)
+        draws while you hold and drag, like a pen. Click anywhere to
+        cancel a tool without finishing it. Fibonacci draws the standard
+        23.6/38.2/50/61.8/78.6% retracement levels between your two
+        clicks &mdash; purely geometric (equal splits of the price range
+        by the golden ratio), not a signal that price will actually
+        react at any of them. Click an existing drawing to delete it.
+        Drawings save per symbol, so they're still there next time you
+        load this chart.
       </p>
       <p id="chart-status" class="status"></p>
       <div id="chart-live-anchor"></div>
@@ -793,6 +800,8 @@
           <button type="button" class="ghost icon-btn" id="draw-tool-horizontal" data-draw-tool="horizontal" title="Horizontal line" aria-label="Horizontal line">&mdash;</button>
           <button type="button" class="ghost icon-btn" id="draw-tool-rectangle" data-draw-tool="rectangle" title="Rectangle" aria-label="Rectangle">&#9645;</button>
           <button type="button" class="ghost icon-btn" id="draw-tool-text" data-draw-tool="text" title="Text note" aria-label="Text note">T</button>
+          <button type="button" class="ghost icon-btn" id="draw-tool-fibonacci" data-draw-tool="fibonacci" title="Fibonacci retracement" aria-label="Fibonacci retracement">&#966;</button>
+          <button type="button" class="ghost icon-btn" id="draw-tool-freehand" data-draw-tool="freehand" title="Freehand" aria-label="Freehand">&#9998;</button>
           <input type="color" id="draw-color" value="#7c3aed" title="Drawing color" aria-label="Drawing color" class="icon-btn">
           <button type="button" class="ghost icon-btn" id="draw-clear-btn" title="Clear all drawings on this symbol" aria-label="Clear all drawings on this symbol">&#128465;</button>
           <span style="flex:1 1 auto;"></span>
@@ -2490,6 +2499,58 @@
     document.getElementById('chart-container').addEventListener('pointercancel', () => {
       chartTapStart = null;
     });
+
+    // Freehand: press, drag, release — unlike every other tool here,
+    // this doesn't go through handleChartClick/handleDrawingClick at
+    // all (those fire on discrete clicks, not a held drag), so it gets
+    // its own dedicated pointer capture. setActiveDrawTool already
+    // disabled the chart's own pan/zoom for the duration this tool is
+    // armed, so there's nothing else competing for the gesture.
+    const FREEHAND_MIN_POINT_SPACING_PX = 3;
+
+    function freehandPointFromEvent(e) {
+      const rect = document.getElementById('chart-container').getBoundingClientRect();
+      const x = e.clientX - rect.left, y = e.clientY - rect.top;
+      const price = candleSeries.coordinateToPrice(y);
+      const time = priceChart.timeScale().coordinateToTime(x);
+      return (price == null || time == null) ? null : { time, price, screenX: x, screenY: y };
+    }
+
+    document.getElementById('chart-container').addEventListener('pointerdown', e => {
+      if (activeDrawTool !== 'freehand' || !candleSeries || !priceChart) return;
+      const point = freehandPointFromEvent(e);
+      if (!point) return;
+      freehandPoints = [point];
+      try { e.target.setPointerCapture(e.pointerId); } catch (err) { /* best-effort */ }
+    });
+    document.getElementById('chart-container').addEventListener('pointermove', e => {
+      if (!freehandPoints) return;
+      const last = freehandPoints[freehandPoints.length - 1];
+      // Distance-sampled in screen space (not every raw pointermove) so
+      // a slow drag doesn't pile up hundreds of near-duplicate points —
+      // screenX/Y are carried alongside time/price purely for this
+      // check, not stored on the finished drawing.
+      const point = freehandPointFromEvent(e);
+      if (!point) return;
+      const dx = point.screenX - last.screenX, dy = point.screenY - last.screenY;
+      if (Math.sqrt(dx * dx + dy * dy) < FREEHAND_MIN_POINT_SPACING_PX) return;
+      freehandPoints.push(point);
+      renderDrawingLayer();
+    });
+    function finishFreehandStroke() {
+      if (!freehandPoints) return;
+      if (freehandPoints.length >= 2) {
+        addDrawing({
+          tool: 'freehand', color: currentDrawColor(),
+          points: freehandPoints.map(p => ({ time: p.time, price: p.price }))
+        });
+      }
+      freehandPoints = null;
+      setActiveDrawTool(null);
+    }
+    document.getElementById('chart-container').addEventListener('pointerup', finishFreehandStroke);
+    document.getElementById('chart-container').addEventListener('pointercancel', () => { freehandPoints = null; });
+
     document.getElementById('chart-fullscreen-modal').addEventListener('click', e => {
       if (e.target.id === 'chart-fullscreen-modal') collapseChart();
     });
@@ -2620,17 +2681,37 @@
     }
 
     // Which tool (if any) is armed, and the first point of a two-click
-    // tool (trend line, rectangle) waiting on its second click.
+    // tool (trend line, rectangle, fibonacci) waiting on its second
+    // click. freehandPoints is the in-progress point array while a
+    // freehand stroke is actively being dragged, null otherwise.
     let activeDrawTool = null;
     let pendingDrawPoint = null;
+    let freehandPoints = null;
+
+    // Freehand needs to own press-and-drag on the chart for itself — the
+    // chart's own pan gesture uses exactly the same gesture, so the two
+    // would otherwise fight over every stroke. Disabled the moment the
+    // tool is armed (not just mid-stroke) and restored the moment it's
+    // disarmed, via applyOptions rather than tracking/restoring whatever
+    // the settings happened to be, since this app never changes them
+    // from the createChart defaults otherwise.
+    function setChartGesturesEnabled(enabled) {
+      if (!priceChart) return;
+      priceChart.applyOptions({
+        handleScroll: { mouseWheel: enabled, pressedMouseMove: enabled, horzTouchDrag: enabled, vertTouchDrag: enabled },
+        handleScale: { axisPressedMouseMove: enabled, mouseWheel: enabled, pinch: enabled }
+      });
+    }
 
     function setActiveDrawTool(tool) {
       activeDrawTool = tool;
       pendingDrawPoint = null;
+      freehandPoints = null;
       document.querySelectorAll('[data-draw-tool]').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.drawTool === tool);
       });
       document.getElementById('chart-container').style.cursor = tool ? 'crosshair' : '';
+      setChartGesturesEnabled(tool !== 'freehand');
       renderDrawingLayer();
     }
 
@@ -2754,20 +2835,27 @@
         showDrawTextPopover(param.point);
         return;
       }
-      // trendline / rectangle: first click sets the anchor point (shown
-      // as a small dot by renderDrawingLayer while pending), second
-      // click completes it.
+      // trendline / rectangle / fibonacci: first click sets the anchor
+      // point (shown as a small dot by renderDrawingLayer while
+      // pending), second click completes it.
       if (!pendingDrawPoint) {
         pendingDrawPoint = { time, price };
         renderDrawingLayer();
         const statusEl = document.getElementById('chart-status');
-        statusEl.textContent = `Click again to finish the ${activeDrawTool === 'trendline' ? 'trend line' : 'rectangle'}.`;
+        statusEl.textContent = `Click again to finish the ${TWO_CLICK_TOOL_NAMES[activeDrawTool] || activeDrawTool}.`;
         statusEl.className = 'status';
       } else {
         addDrawing({ tool: activeDrawTool, color: currentDrawColor(), points: [pendingDrawPoint, { time, price }] });
         setActiveDrawTool(null);
       }
     }
+
+    const TWO_CLICK_TOOL_NAMES = { trendline: 'trend line', rectangle: 'rectangle', fibonacci: 'Fibonacci retracement' };
+
+    // Standard retracement ratios — 0 and 1 anchor exactly on the two
+    // clicked points, the rest split the range between them by the
+    // golden-ratio-derived percentages traders conventionally watch.
+    const FIBONACCI_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
 
     // Routes a click that landed on an existing drawing shape: if a tool
     // is currently armed, the click counts as a normal placement click
@@ -2853,6 +2941,35 @@
         text.textContent = d.text;
         text.addEventListener('click', e => handleShapeClick(e, d.id));
         svg.appendChild(text);
+        return;
+      }
+      if (d.tool === 'fibonacci') {
+        const a = toXY(d.points[0]), b = toXY(d.points[1]);
+        if (!a || !b) return;
+        const left = Math.min(a.x, b.x), right = Math.max(a.x, b.x);
+        const priceStart = d.points[0].price, priceEnd = d.points[1].price;
+        // Every level shares this drawing's one id, so clicking any of
+        // the 7 lines deletes the whole retracement as a single unit
+        // rather than one level at a time.
+        FIBONACCI_LEVELS.forEach(level => {
+          const y = candleSeries.priceToCoordinate(priceStart + (priceEnd - priceStart) * level);
+          if (y == null) return;
+          appendHitLine(svg, d.id, `M ${left} ${y} L ${right} ${y}`, d.color);
+          const label = document.createElementNS(DRAWING_SVG_NS, 'text');
+          label.setAttribute('x', right + 3);
+          label.setAttribute('y', y - 2);
+          label.setAttribute('fill', d.color);
+          label.setAttribute('font-size', '9');
+          label.textContent = (level * 100).toFixed(1) + '%';
+          svg.appendChild(label);
+        });
+        return;
+      }
+      if (d.tool === 'freehand') {
+        const pts = d.points.map(toXY).filter(Boolean);
+        if (pts.length < 2) return;
+        const path = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+        appendHitLine(svg, d.id, path, d.color);
       }
     }
 
@@ -2895,6 +3012,21 @@
           dot.setAttribute('cx', xy.x); dot.setAttribute('cy', xy.y); dot.setAttribute('r', 4);
           dot.setAttribute('fill', currentDrawColor());
           svg.appendChild(dot);
+        }
+      }
+
+      // Live preview of an in-progress freehand stroke — plain path, no
+      // hit-testing wrapper needed since it isn't a real stored drawing
+      // yet (that only happens once the pointer lifts).
+      if (freehandPoints && freehandPoints.length >= 2) {
+        const pts = freehandPoints.map(toXY).filter(Boolean);
+        if (pts.length >= 2) {
+          const path = document.createElementNS(DRAWING_SVG_NS, 'path');
+          path.setAttribute('d', pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' '));
+          path.setAttribute('stroke', currentDrawColor());
+          path.setAttribute('stroke-width', '1.5');
+          path.setAttribute('fill', 'none');
+          svg.appendChild(path);
         }
       }
     }
