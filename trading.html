@@ -320,6 +320,7 @@
     font-size: 0.8rem;
   }
   .filter-btn.active { background: var(--accent-grad); color: white; border-color: transparent; }
+  button.ghost.active { background: var(--accent-grad); color: white; border-color: transparent; }
   .hint { color: var(--muted); font-size: 0.78rem; margin: 0.4rem 0 0; }
   .hint a { color: var(--accent); }
   .status { font-size: 0.85rem; color: var(--muted); margin-top: 0.5rem; }
@@ -732,12 +733,28 @@
         range &mdash; dragging inside the chart itself pans too; double-tap
         either edge to snap back.
       </p>
+      <p class="hint">
+        <strong>Drawing tools:</strong> pick one below, then click the
+        chart to place it (trend line and rectangle need a second click
+        to finish; click anywhere to cancel a tool without finishing it).
+        Click an existing drawing to delete it. Drawings save per symbol,
+        so they're still there next time you load this chart.
+      </p>
+      <div class="row-inline" style="gap:0.4rem;">
+        <button type="button" class="ghost" id="draw-tool-trendline" data-draw-tool="trendline" title="Trend line">&#8599; Trend line</button>
+        <button type="button" class="ghost" id="draw-tool-horizontal" data-draw-tool="horizontal" title="Horizontal line">&mdash; Horizontal</button>
+        <button type="button" class="ghost" id="draw-tool-rectangle" data-draw-tool="rectangle" title="Rectangle">&#9645; Rectangle</button>
+        <button type="button" class="ghost" id="draw-tool-text" data-draw-tool="text" title="Text note">T Text</button>
+        <input type="color" id="draw-color" value="#7c3aed" title="Drawing color" style="width:2.2rem; padding:0.15rem; height:2.2rem;">
+        <button type="button" class="ghost" id="draw-clear-btn" title="Remove every drawing on this symbol">Clear all</button>
+      </div>
       <p id="chart-status" class="status"></p>
       <div id="chart-live-anchor"></div>
       <div id="chart-live-wrap" style="position:relative;">
         <button type="button" id="chart-expand-btn" class="ghost" title="Expand chart" aria-label="Expand chart"
           style="position:absolute; top:0.5rem; right:0.5rem; z-index:5; padding:0.25rem 0.55rem; font-size:1rem; line-height:1;">&#10530;</button>
         <div id="chart-container" style="height: 440px; margin-top: 0.75rem;"></div>
+        <svg id="chart-drawing-layer" style="position:absolute; z-index:3; pointer-events:none;"></svg>
         <div id="chart-time-axis-overlay" title="Drag to scroll through dates" style="position:absolute; z-index:4; cursor:ew-resize; touch-action:none;"></div>
         <div id="chart-price-axis-overlay" title="Drag to scroll through prices" style="position:absolute; z-index:4; cursor:ns-resize; touch-action:none;"></div>
         <p id="chart-pattern-detail" class="status" style="min-height: 1.2em;"></p>
@@ -750,6 +767,21 @@
           <div class="row-inline" style="margin:0; gap:0.4rem;">
             <button type="button" id="chart-alert-popover-confirm" class="ghost">Add alert</button>
             <button type="button" id="chart-alert-popover-cancel" class="ghost">Cancel</button>
+          </div>
+        </div>
+        <div id="draw-text-popover" style="display:none; position:absolute; z-index:6; width:210px; background:var(--card); border:1px solid var(--border); border-radius:8px; box-shadow:var(--shadow); padding:0.6rem 0.7rem; font-size:0.85rem;">
+          <div style="margin-bottom:0.5rem;">Note text</div>
+          <input type="text" id="draw-text-input" maxlength="60" style="display:block; width:100%; margin-bottom:0.5rem;">
+          <div class="row-inline" style="margin:0; gap:0.4rem;">
+            <button type="button" id="draw-text-confirm" class="ghost">Add</button>
+            <button type="button" id="draw-text-cancel" class="ghost">Cancel</button>
+          </div>
+        </div>
+        <div id="draw-delete-popover" style="display:none; position:absolute; z-index:6; width:170px; background:var(--card); border:1px solid var(--border); border-radius:8px; box-shadow:var(--shadow); padding:0.6rem 0.7rem; font-size:0.85rem;">
+          <div style="margin-bottom:0.5rem;">Delete this drawing?</div>
+          <div class="row-inline" style="margin:0; gap:0.4rem;">
+            <button type="button" id="draw-delete-confirm" class="ghost">Delete</button>
+            <button type="button" id="draw-delete-cancel" class="ghost">Cancel</button>
           </div>
         </div>
       </div>
@@ -2130,12 +2162,20 @@
       // looks it up on demand. Each fresh chart needs its own
       // subscription since the whole chart object is recreated above.
       priceChart.subscribeClick(handleChartClick);
+      // Drawings are stored as price/time, not pixels, so panning or
+      // zooming (built-in gestures, or the custom axis-drag above) needs
+      // a re-render to move them to their new correct pixel position.
+      priceChart.timeScale().subscribeVisibleTimeRangeChange(renderDrawingLayer);
       // The price axis's width depends on the width of its price labels,
       // which isn't settled until the chart actually has data to draw —
       // right after creation (no data yet) it reports a stale/zero
       // width, so positioning is deferred a frame rather than done
       // synchronously here.
-      requestAnimationFrame(positionChartAxisOverlays);
+      requestAnimationFrame(() => {
+        positionChartAxisOverlays();
+        positionChartDrawingLayer();
+        renderDrawingLayer();
+      });
       return candleSeries;
     }
 
@@ -2220,6 +2260,12 @@
         axisDragState.bottomPrice += priceDelta;
         const range = { minValue: axisDragState.bottomPrice, maxValue: axisDragState.topPrice };
         candleSeries.applyOptions({ autoscaleInfoProvider: () => ({ priceRange: range }) });
+        // Unlike the time branch above (setVisibleLogicalRange fires the
+        // subscribeVisibleTimeRangeChange listener that keeps drawings
+        // in sync automatically), a price-scale change doesn't trigger
+        // any equivalent event — needs an explicit re-render so drawings
+        // track the price axis live while dragging it.
+        renderDrawingLayer();
       }
     }
 
@@ -2248,6 +2294,7 @@
       renderHighLowLines();
       renderPatternMarkers();
       renderChartAlertLines();
+      renderDrawingLayer();
     }
 
     // Re-measures and repositions the two overlay strips over wherever
@@ -2316,6 +2363,8 @@
     function expandChart() {
       if (chartExpanded || !priceChart) return;
       hideChartAlertPopover();
+      hideDrawTextPopover();
+      hideDrawDeletePopover();
       const wrap = document.getElementById('chart-live-wrap');
       const slot = document.getElementById('chart-fullscreen-slot');
       const container = document.getElementById('chart-container');
@@ -2328,12 +2377,16 @@
       requestAnimationFrame(() => {
         priceChart.resize(container.clientWidth, container.clientHeight);
         positionChartAxisOverlays();
+        positionChartDrawingLayer();
+        renderDrawingLayer();
       });
     }
 
     function collapseChart() {
       if (!chartExpanded) return;
       hideChartAlertPopover();
+      hideDrawTextPopover();
+      hideDrawDeletePopover();
       const anchor = document.getElementById('chart-live-anchor');
       const wrap = document.getElementById('chart-live-wrap');
       const container = document.getElementById('chart-container');
@@ -2346,6 +2399,8 @@
       if (priceChart) requestAnimationFrame(() => {
         priceChart.resize(container.clientWidth, container.clientHeight);
         positionChartAxisOverlays();
+        positionChartDrawingLayer();
+        renderDrawingLayer();
       });
     }
 
@@ -2358,6 +2413,13 @@
       if (e.key !== 'Escape') return;
       if (document.getElementById('chart-alert-popover').style.display === 'block') {
         hideChartAlertPopover();
+      } else if (document.getElementById('draw-text-popover').style.display === 'block') {
+        hideDrawTextPopover();
+        setActiveDrawTool(null);
+      } else if (document.getElementById('draw-delete-popover').style.display === 'block') {
+        hideDrawDeletePopover();
+      } else if (activeDrawTool) {
+        setActiveDrawTool(null);
       } else if (chartExpanded) {
         collapseChart();
       }
@@ -2439,12 +2501,333 @@
       hideChartAlertPopover();
     });
 
+    // --- Chart drawing tools -------------------------------------------
+    // Lightweight Charts has no built-in drawing tools. This is a fully
+    // custom layer instead: an SVG sits on top of the chart canvas
+    // (#chart-drawing-layer, pointer-events:none on the root so empty
+    // areas let clicks fall through to the chart underneath; individual
+    // shapes opt back in with pointer-events:all). Every shape is stored
+    // as price/time — never raw pixels — and its on-screen position is
+    // recomputed from that on every render, so drawings track correctly
+    // through pan, zoom, resize, and expand/collapse (see the various
+    // renderDrawingLayer() call sites threaded through those features).
+    const DRAWINGS_KEY = 'chartDrawings';
+
+    function loadChartDrawings() {
+      try {
+        const raw = localStorage.getItem(DRAWINGS_KEY);
+        if (raw) return JSON.parse(raw);
+      } catch (e) { /* fall through to an empty store */ }
+      return {};
+    }
+    function saveChartDrawings() {
+      localStorage.setItem(DRAWINGS_KEY, JSON.stringify(chartDrawingsStore));
+    }
+    let chartDrawingsStore = loadChartDrawings();
+
+    function currentDrawingsKey() {
+      return (lastChartType && lastChartSymbol) ? paperPositionKey(lastChartType, lastChartSymbol) : null;
+    }
+    function nextDrawingId() {
+      return 'draw_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    }
+    function currentDrawColor() {
+      return document.getElementById('draw-color').value;
+    }
+
+    // Which tool (if any) is armed, and the first point of a two-click
+    // tool (trend line, rectangle) waiting on its second click.
+    let activeDrawTool = null;
+    let pendingDrawPoint = null;
+
+    function setActiveDrawTool(tool) {
+      activeDrawTool = tool;
+      pendingDrawPoint = null;
+      document.querySelectorAll('[data-draw-tool]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.drawTool === tool);
+      });
+      document.getElementById('chart-container').style.cursor = tool ? 'crosshair' : '';
+      renderDrawingLayer();
+    }
+
+    document.querySelectorAll('[data-draw-tool]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        setActiveDrawTool(activeDrawTool === btn.dataset.drawTool ? null : btn.dataset.drawTool);
+      });
+    });
+
+    document.getElementById('draw-clear-btn').addEventListener('click', () => {
+      const key = currentDrawingsKey();
+      if (!key || !chartDrawingsStore[key] || chartDrawingsStore[key].length === 0) return;
+      delete chartDrawingsStore[key];
+      saveChartDrawings();
+      renderDrawingLayer();
+    });
+
+    function addDrawing(drawing) {
+      const key = currentDrawingsKey();
+      if (!key) return;
+      if (!chartDrawingsStore[key]) chartDrawingsStore[key] = [];
+      chartDrawingsStore[key].push({ id: nextDrawingId(), ...drawing });
+      saveChartDrawings();
+      renderDrawingLayer();
+    }
+    function removeDrawing(id) {
+      const key = currentDrawingsKey();
+      if (!key || !chartDrawingsStore[key]) return;
+      chartDrawingsStore[key] = chartDrawingsStore[key].filter(d => d.id !== id);
+      saveChartDrawings();
+      renderDrawingLayer();
+    }
+
+    // Same pixel-space math showChartAlertPopover uses — relative to
+    // #chart-live-wrap, the nearest positioned ancestor every popover in
+    // this section is placed within.
+    function positionChartPopover(popover, point) {
+      const wrap = document.getElementById('chart-live-wrap');
+      const wrapRect = wrap.getBoundingClientRect();
+      const containerRect = document.getElementById('chart-container').getBoundingClientRect();
+      const left = containerRect.left - wrapRect.left + point.x;
+      const top = containerRect.top - wrapRect.top + point.y;
+      popover.style.left = Math.max(0, Math.min(left + 10, wrap.clientWidth - 220)) + 'px';
+      popover.style.top = Math.max(0, top - 10) + 'px';
+    }
+
+    function showDrawTextPopover(point) {
+      const input = document.getElementById('draw-text-input');
+      input.value = '';
+      positionChartPopover(document.getElementById('draw-text-popover'), point);
+      document.getElementById('draw-text-popover').style.display = 'block';
+      input.focus();
+    }
+    function hideDrawTextPopover() {
+      document.getElementById('draw-text-popover').style.display = 'none';
+      pendingDrawPoint = null;
+    }
+    document.getElementById('draw-text-confirm').addEventListener('click', () => {
+      const text = document.getElementById('draw-text-input').value.trim();
+      if (text && pendingDrawPoint) addDrawing({ tool: 'text', color: currentDrawColor(), points: [pendingDrawPoint], text });
+      hideDrawTextPopover();
+      setActiveDrawTool(null);
+    });
+    document.getElementById('draw-text-cancel').addEventListener('click', () => {
+      hideDrawTextPopover();
+      setActiveDrawTool(null);
+    });
+    document.getElementById('draw-text-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('draw-text-confirm').click();
+    });
+
+    let pendingDeleteId = null;
+    function showDrawDeletePopover(point, id) {
+      pendingDeleteId = id;
+      positionChartPopover(document.getElementById('draw-delete-popover'), point);
+      document.getElementById('draw-delete-popover').style.display = 'block';
+    }
+    function hideDrawDeletePopover() {
+      document.getElementById('draw-delete-popover').style.display = 'none';
+      pendingDeleteId = null;
+    }
+    document.getElementById('draw-delete-confirm').addEventListener('click', () => {
+      if (pendingDeleteId) removeDrawing(pendingDeleteId);
+      hideDrawDeletePopover();
+    });
+    document.getElementById('draw-delete-cancel').addEventListener('click', hideDrawDeletePopover);
+    document.addEventListener('click', e => {
+      const popover = document.getElementById('draw-delete-popover');
+      if (popover.style.display !== 'block') return;
+      if (popover.contains(e.target) || document.getElementById('chart-container').contains(e.target)) return;
+      hideDrawDeletePopover();
+    });
+    document.addEventListener('click', e => {
+      const popover = document.getElementById('draw-text-popover');
+      if (popover.style.display !== 'block') return;
+      if (popover.contains(e.target) || document.getElementById('chart-container').contains(e.target)) return;
+      hideDrawTextPopover();
+    });
+
+    // Handles a click on the chart while a drawing tool is armed —
+    // called from handleChartClick instead of its usual pattern-detail/
+    // price-alert behavior. Also called directly (bypassing
+    // subscribeClick) when a click lands on an *existing* shape while a
+    // tool is armed, since the shape's own pointer-events:all click
+    // handler intercepts that click before the chart's canvas ever sees
+    // it — see handleShapeClick below.
+    function handleDrawingClick(param) {
+      if (!activeDrawTool || !param.point || !candleSeries || !priceChart) return;
+      const price = candleSeries.coordinateToPrice(param.point.y);
+      if (price == null) return;
+      const time = priceChart.timeScale().coordinateToTime(param.point.x);
+
+      if (activeDrawTool === 'horizontal') {
+        addDrawing({ tool: 'horizontal', color: currentDrawColor(), price });
+        setActiveDrawTool(null);
+        return;
+      }
+      if (time == null) return; // trend line/rectangle/text all need a time anchor
+      if (activeDrawTool === 'text') {
+        pendingDrawPoint = { time, price };
+        showDrawTextPopover(param.point);
+        return;
+      }
+      // trendline / rectangle: first click sets the anchor point (shown
+      // as a small dot by renderDrawingLayer while pending), second
+      // click completes it.
+      if (!pendingDrawPoint) {
+        pendingDrawPoint = { time, price };
+        renderDrawingLayer();
+        const statusEl = document.getElementById('chart-status');
+        statusEl.textContent = `Click again to finish the ${activeDrawTool === 'trendline' ? 'trend line' : 'rectangle'}.`;
+        statusEl.className = 'status';
+      } else {
+        addDrawing({ tool: activeDrawTool, color: currentDrawColor(), points: [pendingDrawPoint, { time, price }] });
+        setActiveDrawTool(null);
+      }
+    }
+
+    // Routes a click that landed on an existing drawing shape: if a tool
+    // is currently armed, the click counts as a normal placement click
+    // (matching what would have happened had the shape not been in the
+    // way) rather than selecting that shape — otherwise it opens the
+    // delete popover for it.
+    function handleShapeClick(e, id) {
+      e.stopPropagation();
+      const rect = document.getElementById('chart-container').getBoundingClientRect();
+      const point = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      if (activeDrawTool) {
+        handleDrawingClick({ point, time: priceChart.timeScale().coordinateToTime(point.x) });
+      } else {
+        showDrawDeletePopover(point, id);
+      }
+    }
+
+    const DRAWING_SVG_NS = 'http://www.w3.org/2000/svg';
+
+    // One thin visible line plus one wide (12px), invisible line on top
+    // for hit-testing — a 1.5px stroke is too thin to reliably click.
+    function appendHitLine(svg, id, d, color) {
+      const visible = document.createElementNS(DRAWING_SVG_NS, 'path');
+      visible.setAttribute('d', d);
+      visible.setAttribute('stroke', color);
+      visible.setAttribute('stroke-width', '1.5');
+      visible.setAttribute('fill', 'none');
+      svg.appendChild(visible);
+
+      const hit = document.createElementNS(DRAWING_SVG_NS, 'path');
+      hit.setAttribute('d', d);
+      hit.setAttribute('stroke', 'transparent');
+      hit.setAttribute('stroke-width', '12');
+      hit.setAttribute('fill', 'none');
+      hit.style.pointerEvents = 'all';
+      hit.style.cursor = 'pointer';
+      hit.addEventListener('click', e => handleShapeClick(e, id));
+      svg.appendChild(hit);
+    }
+
+    function drawShape(svg, d, toXY) {
+      if (d.tool === 'horizontal') {
+        const width = document.getElementById('chart-container').clientWidth;
+        const y = candleSeries.priceToCoordinate(d.price);
+        if (y == null) return;
+        appendHitLine(svg, d.id, `M 0 ${y} L ${width} ${y}`, d.color);
+        return;
+      }
+      if (d.tool === 'trendline') {
+        const a = toXY(d.points[0]), b = toXY(d.points[1]);
+        if (!a || !b) return;
+        appendHitLine(svg, d.id, `M ${a.x} ${a.y} L ${b.x} ${b.y}`, d.color);
+        return;
+      }
+      if (d.tool === 'rectangle') {
+        const a = toXY(d.points[0]), b = toXY(d.points[1]);
+        if (!a || !b) return;
+        const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+        const w = Math.abs(b.x - a.x), h = Math.abs(b.y - a.y);
+        const rect = document.createElementNS(DRAWING_SVG_NS, 'rect');
+        rect.setAttribute('x', x); rect.setAttribute('y', y);
+        rect.setAttribute('width', w); rect.setAttribute('height', h);
+        rect.setAttribute('fill', d.color); rect.setAttribute('fill-opacity', '0.12');
+        rect.setAttribute('stroke', d.color); rect.setAttribute('stroke-width', '1.5');
+        rect.style.pointerEvents = 'all';
+        rect.style.cursor = 'pointer';
+        rect.addEventListener('click', e => handleShapeClick(e, d.id));
+        svg.appendChild(rect);
+        return;
+      }
+      if (d.tool === 'text') {
+        const a = toXY(d.points[0]);
+        if (!a) return;
+        const dot = document.createElementNS(DRAWING_SVG_NS, 'circle');
+        dot.setAttribute('cx', a.x); dot.setAttribute('cy', a.y); dot.setAttribute('r', 3);
+        dot.setAttribute('fill', d.color);
+        svg.appendChild(dot);
+        const text = document.createElementNS(DRAWING_SVG_NS, 'text');
+        text.setAttribute('x', a.x + 5); text.setAttribute('y', a.y - 5);
+        text.setAttribute('fill', d.color); text.setAttribute('font-size', '12');
+        text.style.pointerEvents = 'all';
+        text.style.cursor = 'pointer';
+        text.textContent = d.text;
+        text.addEventListener('click', e => handleShapeClick(e, d.id));
+        svg.appendChild(text);
+      }
+    }
+
+    // Re-measures and resizes the SVG overlay to exactly cover
+    // #chart-container — called alongside positionChartAxisOverlays()
+    // everywhere that runs (chart creation, resize, expand/collapse).
+    function positionChartDrawingLayer() {
+      const svg = document.getElementById('chart-drawing-layer');
+      const container = document.getElementById('chart-container');
+      svg.style.left = container.offsetLeft + 'px';
+      svg.style.top = container.offsetTop + 'px';
+      svg.setAttribute('width', container.clientWidth);
+      svg.setAttribute('height', container.clientHeight);
+      svg.setAttribute('viewBox', `0 0 ${container.clientWidth} ${container.clientHeight}`);
+    }
+
+    // Redraws every stored drawing for the currently loaded symbol, plus
+    // (if a two-click tool has a pending first point) a small marker at
+    // that point. Safe to call at any time, including with no chart
+    // loaded yet — the empty-svg branch below just no-ops.
+    function renderDrawingLayer() {
+      const svg = document.getElementById('chart-drawing-layer');
+      if (!priceChart || !candleSeries) { svg.innerHTML = ''; return; }
+      const key = currentDrawingsKey();
+      const drawings = key ? (chartDrawingsStore[key] || []) : [];
+      svg.innerHTML = '';
+
+      const toXY = p => {
+        const x = priceChart.timeScale().timeToCoordinate(p.time);
+        const y = candleSeries.priceToCoordinate(p.price);
+        return (x == null || y == null) ? null : { x, y };
+      };
+
+      drawings.forEach(d => drawShape(svg, d, toXY));
+
+      if (pendingDrawPoint) {
+        const xy = toXY(pendingDrawPoint);
+        if (xy) {
+          const dot = document.createElementNS(DRAWING_SVG_NS, 'circle');
+          dot.setAttribute('cx', xy.x); dot.setAttribute('cy', xy.y); dot.setAttribute('r', 4);
+          dot.setAttribute('fill', currentDrawColor());
+          svg.appendChild(dot);
+        }
+      }
+    }
+
     // How many candles later to check whether a pattern's conventional
     // direction actually panned out — roughly "about a day" either way:
     // 6 of crypto's 4-hourly candles, 3 stock trading days.
     const PATTERN_LOOKAHEAD = { crypto: 6, stock: 3 };
 
     function handleChartClick(param) {
+      // While a drawing tool is armed, clicking the chart places a
+      // drawing point instead of the usual expand/pattern-detail/
+      // price-alert behavior below.
+      if (activeDrawTool) {
+        handleDrawingClick(param);
+        return;
+      }
       // Any click on the chart itself (not just a candle that resolves
       // to a pattern) expands it — matches clicking the explicit expand
       // button, just discoverable without it.
@@ -2627,6 +3010,13 @@
         lastAlertedPatternCandleTime = candles[candles.length - 1].time;
         renderChartAlertLines();
         renderPatternAccuracyTable();
+        // ensureChart() above already scheduled a renderDrawingLayer()
+        // call, but it runs before lastChartType/lastChartSymbol are
+        // updated to this new symbol (right here) — this explicit call
+        // makes sure the newly loaded symbol's own drawings show up,
+        // not whatever the previously loaded symbol had.
+        setActiveDrawTool(null);
+        renderDrawingLayer();
 
         statusEl.textContent = `Loaded ${candles.length} candles for ${normSymbol}.`;
         statusEl.className = 'status';
@@ -2673,6 +3063,7 @@
         renderHighLowLines();
         renderChartAlertLines();
         renderPatternAccuracyTable();
+        renderDrawingLayer();
 
         if (!document.getElementById('chart-patterns-toggle').checked) return;
         const lastIndex = candles.length - 1;
@@ -2767,6 +3158,8 @@
       const container = document.getElementById('chart-container');
       priceChart.resize(container.clientWidth, container.clientHeight);
       positionChartAxisOverlays();
+      positionChartDrawingLayer();
+      renderDrawingLayer();
     });
 
     if (window.matchMedia) {
