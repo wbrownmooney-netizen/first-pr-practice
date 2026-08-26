@@ -272,13 +272,42 @@
      screen height once the toolbar/detail-text take their share in
      fullscreen) with no JS height math needed for either case. */
   #chart-live-wrap { display: flex; flex-direction: column; height: 100%; }
-  #chart-drawing-toolbar { flex: 0 0 auto; }
-  #chart-container { flex: 1 1 auto; min-height: 0; }
-  #chart-pattern-detail { flex: 0 0 auto; }
-  /* Only while relocated into the fullscreen modal (this selector only
-     matches in that nesting) — clears space so the toolbar's first row
-     never sits under the close button in the modal's top-right corner. */
-  #chart-fullscreen-slot #chart-live-wrap { padding-top: 2.25rem; }
+  #chart-container {
+    flex: 1 1 auto;
+    min-height: 0;
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 10px 10px;
+    overflow: hidden;
+  }
+  #chart-pattern-detail { flex: 0 0 auto; margin: 0.4rem 0 0; }
+  /* A real toolbar bar (background + border) rather than buttons
+     floating loose on the page — expand/close sit in the same row,
+     pushed to the far right by the flex spacer span between them and
+     the drawing tools, so there's no absolute-positioned close button
+     to accidentally overlap anything below it. */
+  #chart-drawing-toolbar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px 10px 0 0;
+    padding: 0.4rem;
+  }
+  .icon-btn {
+    width: 2.3rem;
+    height: 2.3rem;
+    padding: 0 !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    line-height: 1;
+    flex: 0 0 auto;
+  }
+  input.icon-btn { border-width: 1px; }
   select, input[type="text"], input[type="password"], input[type="number"] {
     padding: 0.55rem 0.7rem;
     border-radius: 8px;
@@ -759,17 +788,18 @@
       <p id="chart-status" class="status"></p>
       <div id="chart-live-anchor"></div>
       <div id="chart-live-wrap" style="position:relative;">
-        <div class="row-inline" id="chart-drawing-toolbar" style="gap:0.4rem;">
-          <button type="button" class="ghost" id="draw-tool-trendline" data-draw-tool="trendline" title="Trend line">&#8599; Trend line</button>
-          <button type="button" class="ghost" id="draw-tool-horizontal" data-draw-tool="horizontal" title="Horizontal line">&mdash; Horizontal</button>
-          <button type="button" class="ghost" id="draw-tool-rectangle" data-draw-tool="rectangle" title="Rectangle">&#9645; Rectangle</button>
-          <button type="button" class="ghost" id="draw-tool-text" data-draw-tool="text" title="Text note">T Text</button>
-          <input type="color" id="draw-color" value="#7c3aed" title="Drawing color" style="width:2.2rem; padding:0.15rem; height:2.2rem;">
-          <button type="button" class="ghost" id="draw-clear-btn" title="Remove every drawing on this symbol">Clear all</button>
+        <div id="chart-drawing-toolbar">
+          <button type="button" class="ghost icon-btn" id="draw-tool-trendline" data-draw-tool="trendline" title="Trend line" aria-label="Trend line">&#8599;</button>
+          <button type="button" class="ghost icon-btn" id="draw-tool-horizontal" data-draw-tool="horizontal" title="Horizontal line" aria-label="Horizontal line">&mdash;</button>
+          <button type="button" class="ghost icon-btn" id="draw-tool-rectangle" data-draw-tool="rectangle" title="Rectangle" aria-label="Rectangle">&#9645;</button>
+          <button type="button" class="ghost icon-btn" id="draw-tool-text" data-draw-tool="text" title="Text note" aria-label="Text note">T</button>
+          <input type="color" id="draw-color" value="#7c3aed" title="Drawing color" aria-label="Drawing color" class="icon-btn">
+          <button type="button" class="ghost icon-btn" id="draw-clear-btn" title="Clear all drawings on this symbol" aria-label="Clear all drawings on this symbol">&#128465;</button>
+          <span style="flex:1 1 auto;"></span>
+          <button type="button" id="chart-expand-btn" class="ghost icon-btn" title="Expand chart" aria-label="Expand chart">&#10530;</button>
+          <button type="button" id="chart-collapse-btn" class="ghost icon-btn" title="Close" aria-label="Close" style="display:none;">&times;</button>
         </div>
-        <button type="button" id="chart-expand-btn" class="ghost" title="Expand chart" aria-label="Expand chart"
-          style="position:absolute; top:0.5rem; right:0.5rem; z-index:5; padding:0.25rem 0.55rem; font-size:1rem; line-height:1;">&#10530;</button>
-        <div id="chart-container" style="height: 440px; margin-top: 0.75rem;"></div>
+        <div id="chart-container" style="height: 440px;"></div>
         <svg id="chart-drawing-layer" style="position:absolute; z-index:3; pointer-events:none;"></svg>
         <div id="chart-time-axis-overlay" title="Drag to scroll through dates" style="position:absolute; z-index:4; cursor:ew-resize; touch-action:none;"></div>
         <div id="chart-price-axis-overlay" title="Drag to scroll through prices" style="position:absolute; z-index:4; cursor:ns-resize; touch-action:none;"></div>
@@ -864,8 +894,6 @@
     </section>
 
     <div id="chart-fullscreen-modal" style="display:none; position:fixed; inset:0; background:var(--bg); z-index:1000; overflow-y:auto;">
-      <button type="button" id="chart-collapse-btn" class="ghost" title="Close" aria-label="Close"
-        style="position:absolute; top:0.5rem; right:0.5rem; z-index:1001; padding:0.3rem 0.6rem; font-size:1rem; line-height:1;">&times;</button>
       <div id="chart-fullscreen-slot" style="height:100%;"></div>
     </div>
 
@@ -2389,6 +2417,7 @@
       const container = document.getElementById('chart-container');
       slot.appendChild(wrap);
       document.getElementById('chart-expand-btn').style.display = 'none';
+      document.getElementById('chart-collapse-btn').style.display = '';
       // No explicit height to set here — #chart-live-wrap's CSS flex
       // layout (see its rule) automatically grows #chart-container to
       // fill whatever space is actually available once it's relocated
@@ -2414,6 +2443,7 @@
       const container = document.getElementById('chart-container');
       anchor.insertAdjacentElement('afterend', wrap);
       document.getElementById('chart-expand-btn').style.display = '';
+      document.getElementById('chart-collapse-btn').style.display = 'none';
       document.getElementById('chart-fullscreen-modal').style.display = 'none';
       document.body.style.overflow = '';
       chartExpanded = false;
