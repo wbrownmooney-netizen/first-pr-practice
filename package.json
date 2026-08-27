@@ -1,7 +1,7 @@
 {
   "name": "trading-dashboard-app",
   "version": "1.0.0",
-  "description": "Native Android wrapper (Capacitor) for the Crypto & Stocks Dashboard paper trading simulator.",
+  "description": "Native Android wrapper (Capacitor) for the Reppintime Trading paper trading simulator.",
   "private": true,
   "scripts": {
     "sync:www": "node scripts/build-www.js",

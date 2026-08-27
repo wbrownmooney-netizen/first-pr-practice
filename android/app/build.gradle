@@ -1,5 +1,17 @@
 apply plugin: 'com.android.application'
 
+// Release signing reads from keystore.properties (gitignored — never
+// committed) rather than hardcoding the keystore path/passwords here.
+// Missing entirely on a machine with no release keystore (e.g. a
+// fresh checkout that only needs debug builds) — release builds just
+// won't have a signingConfig applied in that case, rather than failing
+// the whole Gradle sync.
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "com.wbrownmooney.tradingdashboard"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,10 +28,27 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (keystorePropertiesFile.exists()) {
+                // keystoreProperties['storeFile'] is relative to this
+                // module directory (android/app/) — plain file(), not
+                // rootProject.file(), which would resolve against
+                // android/ instead and miss it.
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (keystorePropertiesFile.exists()) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }
