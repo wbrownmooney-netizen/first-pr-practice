@@ -4464,12 +4464,47 @@
     // way to move it to another browser. Nothing here touches saved API
     // keys or the stock watchlist; it's scoped to the same state object
     // reset-btn clears (cash, positions, options, history, realizedPL).
-    function exportPaperState() {
-      const blob = new Blob([JSON.stringify(paperState, null, 2)], { type: 'application/json' });
+    async function exportPaperState() {
+      const filename = `paper-portfolio-${new Date().toISOString().slice(0, 10)}.json`;
+      const json = JSON.stringify(paperState, null, 2);
+
+      // A plain <a download> blob link never fires anything on Android's
+      // Capacitor WebView — there's no download listener registered, so
+      // the click silently no-ops and no file is ever written (confirmed
+      // via CDP: no download/navigation event, no thrown error). Native
+      // needs the actual Filesystem + Share plugins instead; a browser
+      // tab still gets the normal instant download.
+      if (isNativeApp()) {
+        const statusEl = document.getElementById('import-status');
+        try {
+          // No bundler here, so only the plugin instances are available on
+          // window.Capacitor.Plugins — the Directory/Encoding TS enums are
+          // never exposed globally. Their raw string values (per
+          // @capacitor/filesystem's definitions) are used directly instead.
+          const { Filesystem } = window.Capacitor.Plugins;
+          const written = await Filesystem.writeFile({
+            path: filename,
+            data: json,
+            directory: 'CACHE',
+            encoding: 'utf8'
+          });
+          await window.Capacitor.Plugins.Share.share({
+            title: 'Paper portfolio export',
+            url: written.uri,
+            dialogTitle: 'Save or send your portfolio export'
+          });
+        } catch (err) {
+          statusEl.textContent = 'Export failed: ' + err.message;
+          statusEl.className = 'status error';
+        }
+        return;
+      }
+
+      const blob = new Blob([json], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `paper-portfolio-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       a.remove();
