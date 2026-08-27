@@ -1,4 +1,4 @@
-package com.wbrownmooney.tradingdashboard;
+package com.wbrownmooney.reppintimetrading;
 
 import com.getcapacitor.BridgeActivity;
 
