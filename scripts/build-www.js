@@ -1,10 +1,10 @@
 // Builds the `www/` directory Capacitor bundles into the native Android
-// app. The web repo's entry point (index.html) is the unrelated
-// PR-practice counter app, so the native app instead uses trading.html
-// as its single screen — copied to www/index.html along with the JS
+// and iOS apps. The web repo's entry point (index.html) is the unrelated
+// PR-practice counter app, so the native apps instead use trading.html
+// as their single screen — copied to www/index.html along with the JS
 // modules it depends on and the app icons. Nothing here changes the
 // GitHub Pages site itself; this only assembles a separate copy for the
-// native wrapper.
+// native wrappers.
 const fs = require('fs');
 const path = require('path');
 

@@ -1541,11 +1541,12 @@
     const recentAlerts = new Map();
     const ALERT_HIGHLIGHT_MS = 2 * 60 * 1000;
 
-    // True when running as the native Android app (via Capacitor) rather
-    // than a regular browser tab. The web Notification API used
-    // elsewhere on this page doesn't exist inside Android's WebView, so
-    // notifications need a different implementation there — checked
-    // once and reused rather than re-detected on every call.
+    // True when running as the native Android or iOS app (via Capacitor)
+    // rather than a regular browser tab. The web Notification API used
+    // elsewhere on this page doesn't exist inside either platform's
+    // native WebView, so notifications need a different implementation
+    // there — checked once and reused rather than re-detected on every
+    // call.
     function isNativeApp() {
       return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
     }
@@ -4468,12 +4469,13 @@
       const filename = `paper-portfolio-${new Date().toISOString().slice(0, 10)}.json`;
       const json = JSON.stringify(paperState, null, 2);
 
-      // A plain <a download> blob link never fires anything on Android's
-      // Capacitor WebView — there's no download listener registered, so
-      // the click silently no-ops and no file is ever written (confirmed
-      // via CDP: no download/navigation event, no thrown error). Native
-      // needs the actual Filesystem + Share plugins instead; a browser
-      // tab still gets the normal instant download.
+      // A plain <a download> blob link never fires anything inside
+      // Capacitor's native WebView on Android or iOS — there's no
+      // download listener registered, so the click silently no-ops and
+      // no file is ever written (confirmed via CDP on Android: no
+      // download/navigation event, no thrown error). Native needs the
+      // actual Filesystem + Share plugins instead; a browser tab still
+      // gets the normal instant download.
       if (isNativeApp()) {
         const statusEl = document.getElementById('import-status');
         try {
